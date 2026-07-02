@@ -1,0 +1,25 @@
+{
+  "name": "chatgpt-export",
+  "version": "1.0.0",
+  "description": "ChatGPT 聊天记录导出工具：浏览器控制台抓取 + 本地多格式导出（PDF/TXT/Markdown/HTML）",
+  "type": "module",
+  "main": "export.js",
+  "bin": {
+    "chatgpt-export": "./export.js"
+  },
+  "scripts": {
+    "export": "node export.js",
+    "demo": "node export.js --input samples/sample-conversations.json --format pdf,html,md,txt --merge --output ./out"
+  },
+  "engines": {
+    "node": ">=18.11"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^15.0.7",
+    "marked-highlight": "^2.2.1",
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^24.10.0"
+  }
+}
