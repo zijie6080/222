@@ -3,34 +3,62 @@
 <head>
 <meta charset="utf-8">
 <style>
+  :root { --accent: #10a37f; --border: #e3e6ea; --muted: #57606a; }
   body {
-    width: 340px; margin: 0; padding: 14px;
+    width: 360px; margin: 0; padding: 14px 16px;
     font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     font-size: 13px; color: #1f2328; background: #fff;
   }
-  h1 { font-size: 15px; margin: 0 0 2px; }
-  .sub { color: #57606a; font-size: 11.5px; margin-bottom: 12px; }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 11.5px; margin-bottom: 6px; }
   .platform { font-weight: 600; }
-  .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-  .row label { flex: 1; }
-  input[type="number"] { width: 80px; padding: 4px 6px; border: 1px solid #d0d7de; border-radius: 6px; }
-  button {
-    width: 100%; margin-top: 10px; padding: 8px 0;
-    background: #10a37f; color: #fff; border: none; border-radius: 8px;
+
+  .section { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px; }
+  .section-title { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
+  .row > label:first-child { flex: 1; }
+  input[type="text"], input[type="number"], input[type="date"], select {
+    padding: 4px 7px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 12.5px;
+    background: #fff; color: inherit;
+  }
+  input[type="number"] { width: 72px; }
+  input[type="text"] { width: 130px; }
+  input[type="date"] { width: 128px; }
+
+  /* 开关样式 */
+  .switch { position: relative; width: 36px; height: 20px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: #c9ced4; border-radius: 20px; transition: .15s; cursor: pointer; }
+  .slider::before { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px;
+    background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(16px); }
+
+  /* 格式多选 */
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { border: 1px solid #d0d7de; border-radius: 14px; padding: 3px 12px; cursor: pointer; user-select: none; }
+  .chip input { display: none; }
+  .chip:has(input:checked) { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  button#start {
+    width: 100%; margin-top: 12px; padding: 9px 0;
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
     font-size: 14px; font-weight: 600; cursor: pointer;
   }
-  button:disabled { background: #b8bcc2; cursor: default; }
+  button#start:disabled { background: #b8bcc2; cursor: default; }
+
   #log {
-    margin-top: 12px; max-height: 220px; overflow-y: auto;
-    background: #f6f7f9; border: 1px solid #e3e6ea; border-radius: 8px;
+    margin-top: 10px; max-height: 180px; overflow-y: auto;
+    background: #f6f7f9; border: 1px solid var(--border); border-radius: 8px;
     padding: 8px; font-family: Menlo, Consolas, monospace; font-size: 11px;
     line-height: 1.5; white-space: pre-wrap; word-break: break-all; display: none;
   }
   #log .warn { color: #9a6700; }
   #log .error { color: #cf222e; }
-  #log .done { color: #10a37f; font-weight: 600; }
-  .hint { color: #57606a; font-size: 11.5px; margin-top: 10px; line-height: 1.6; }
-  .hint a { color: #0b57d0; text-decoration: none; }
+  #log .done { color: var(--accent); font-weight: 600; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 8px; line-height: 1.6; }
+  .hint code { background: #f0f2f5; border-radius: 4px; padding: 0 4px; }
   .unsupported { color: #cf222e; }
 </style>
 </head>
@@ -39,24 +67,95 @@
   <div class="sub" id="status">检测当前页面…</div>
 
   <div id="options" style="display:none">
-    <div class="row">
-      <label for="maxConv">最多抓取对话数（留空 = 全部）</label>
-      <input type="number" id="maxConv" min="1" placeholder="全部">
+    <div class="section">
+      <div class="section-title">ⓘ 抓取范围</div>
+      <div class="row">
+        <label for="maxConv">最多抓取对话数（留空 = 全部）</label>
+        <input type="number" id="maxConv" min="1" placeholder="全部">
+      </div>
+      <div class="row">
+        <label for="fromDate">起始日期</label>
+        <input type="date" id="fromDate">
+      </div>
+      <div class="row">
+        <label for="toDate">截止日期（含当天）</label>
+        <input type="date" id="toDate">
+      </div>
+      <div class="row">
+        <label for="titleKeyword">标题包含关键词</label>
+        <input type="text" id="titleKeyword" placeholder="留空 = 不筛选">
+      </div>
+      <div class="row" id="archivedRow" style="display:none">
+        <label>包含已归档对话</label>
+        <span class="switch"><input type="checkbox" id="archived" checked><span class="slider"></span></span>
+      </div>
+      <div class="row" id="dateHintRow" style="display:none">
+        <span class="hint">⚠ 该平台抓不到时间戳，日期筛选不生效</span>
+      </div>
     </div>
-    <div class="row" id="archivedRow" style="display:none">
-      <label for="archived">包含已归档对话</label>
-      <input type="checkbox" id="archived" checked>
+
+    <div class="section">
+      <div class="section-title">ⓘ 导出内容（影响 Markdown/TXT/HTML；JSON 始终保留完整数据）</div>
+      <div class="row">
+        <label>消息时间戳</label>
+        <span class="switch"><input type="checkbox" id="showTimestamps" checked><span class="slider"></span></span>
+      </div>
+      <div class="row">
+        <label>思考过程（reasoning）</label>
+        <span class="switch"><input type="checkbox" id="includeReasoning"><span class="slider"></span></span>
+      </div>
+      <div class="row">
+        <label>系统消息 / 工具输出</label>
+        <span class="switch"><input type="checkbox" id="includeSystem"><span class="slider"></span></span>
+      </div>
+      <div class="row">
+        <label>原对话链接</label>
+        <span class="switch"><input type="checkbox" id="includeLinks" checked><span class="slider"></span></span>
+      </div>
     </div>
-    <div class="hint" id="domHint" style="display:none">
-      ⚠ 该平台用页面模拟操作方式抓取：抓取期间请保持此标签页在前台，不要操作页面。
+
+    <div class="section">
+      <div class="section-title">ⓘ 导出格式（可多选）</div>
+      <div class="row" style="min-height:34px">
+        <div class="chips">
+          <label class="chip"><input type="checkbox" id="fmtJson" checked>JSON</label>
+          <label class="chip"><input type="checkbox" id="fmtMd">Markdown</label>
+          <label class="chip"><input type="checkbox" id="fmtTxt">TXT</label>
+          <label class="chip"><input type="checkbox" id="fmtHtml">HTML</label>
+        </div>
+      </div>
+      <div class="row">
+        <label for="fileMode">文件组织</label>
+        <select id="fileMode">
+          <option value="merge" selected>合并为一个文件</option>
+          <option value="split">每个对话单独文件</option>
+        </select>
+      </div>
     </div>
-    <button id="start">开始抓取并下载 JSON</button>
+
+    <div class="section">
+      <div class="section-title">ⓘ 文件设置</div>
+      <div class="row">
+        <label for="filePrefix">文件名前缀</label>
+        <input type="text" id="filePrefix" placeholder="ChatGPT-">
+      </div>
+      <div class="row">
+        <label for="timeStyle">时间格式</label>
+        <select id="timeStyle">
+          <option value="iso" selected>2025-06-30 14:30（24h）</option>
+          <option value="zh">2025年6月30日 14:30</option>
+          <option value="12h">2025-06-30 下午 2:30</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="start">开始抓取并导出</button>
   </div>
 
   <div id="log"></div>
 
   <div class="hint" id="footer">
-    完成后会自动下载 conversations.json，再用本地命令生成 PDF：<br>
+    设置会自动保存。要出带目录页码、代码高亮的高质量 PDF，请配合本地命令：<br>
     <code>node export.js --input conversations.json --format pdf --merge</code>
   </div>
 

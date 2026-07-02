@@ -153,6 +153,19 @@
   let list = await listConversations();
   // 按更新时间倒序 → 抓取时新对话在前
   list.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+  // 抓取前筛选（插件设置）：标题关键词 / 时间范围，减少不必要的请求
+  if (CONFIG.titleKeyword) {
+    const kw = String(CONFIG.titleKeyword).toLowerCase();
+    list = list.filter((it) => String(it.name || '').toLowerCase().includes(kw));
+  }
+  if (CONFIG.fromDate || CONFIG.toDate) {
+    const from = CONFIG.fromDate ? new Date(CONFIG.fromDate) : null;
+    const to = CONFIG.toDate ? new Date(CONFIG.toDate + 'T23:59:59.999') : null;
+    list = list.filter((it) => {
+      const t = new Date(it.updated_at || it.created_at || 0);
+      return (!from || t >= from) && (!to || t <= to);
+    });
+  }
   if (list.length > CONFIG.maxConversations) list = list.slice(0, CONFIG.maxConversations);
   log(`共 ${list.length} 个对话，开始逐个抓取详情…`);
 
@@ -190,16 +203,21 @@
     failures: failures.length ? failures : undefined,
     conversations,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = CONFIG.outputFilename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  if (globalThis.__AI_EXPORT_EMIT) {
+    // 浏览器插件注入的多格式导出（JSON/Markdown/TXT/HTML、文件名前缀、时间格式等）
+    await globalThis.__AI_EXPORT_EMIT(payload, CONFIG);
+  } else {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = CONFIG.outputFilename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
 
-  log(`完成！成功 ${conversations.length} 个，失败 ${failures.length} 个，已下载 ${CONFIG.outputFilename}`);
+  log(`完成！成功 ${conversations.length} 个，失败 ${failures.length} 个`);
   if (failures.length) warn('失败列表：', failures);
   report('done', `成功 ${conversations.length} 个，失败 ${failures.length} 个`);
 })().catch((err) => {

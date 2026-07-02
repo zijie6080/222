@@ -54,6 +54,7 @@
   }
 
   function itemTitle(el) {
+    if (!el || typeof el.querySelector !== 'function') return '(无标题)';
     const t = el.querySelector('.conversation-title');
     return ((t ? t.textContent : el.textContent) || '').trim() || '(无标题)';
   }
@@ -148,7 +149,12 @@
   const conversations = [];
   const failures = [];
   for (let i = 0; i < total; i++) {
-    const title = itemTitle(convItems()[i] || {});
+    const title = itemTitle(convItems()[i]);
+    // 抓取前筛选（插件设置）：标题关键词
+    if (CONFIG.titleKeyword && !title.toLowerCase().includes(String(CONFIG.titleKeyword).toLowerCase())) {
+      log(`[${i + 1}/${total}] 跳过（标题不含关键词）：${title}`);
+      continue;
+    }
     try {
       await openConversation(i, title);
       await loadFullHistory();
@@ -175,16 +181,21 @@
     failures: failures.length ? failures : undefined,
     conversations,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = CONFIG.outputFilename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  if (globalThis.__AI_EXPORT_EMIT) {
+    // 浏览器插件注入的多格式导出（JSON/Markdown/TXT/HTML、文件名前缀、时间格式等）
+    await globalThis.__AI_EXPORT_EMIT(payload, CONFIG);
+  } else {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = CONFIG.outputFilename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
 
-  log(`完成！成功 ${conversations.length} 个，失败 ${failures.length} 个，已下载 ${CONFIG.outputFilename}`);
+  log(`完成！成功 ${conversations.length} 个，失败 ${failures.length} 个`);
   if (failures.length) warn('失败列表：', failures);
   report('done', `成功 ${conversations.length} 个，失败 ${failures.length} 个`);
 })().catch((err) => {
