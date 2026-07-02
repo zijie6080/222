@@ -1,16 +1,32 @@
-# ChatGPT 聊天记录导出工具
+# AI 聊天记录导出工具（ChatGPT / Claude / Gemini / Grok）
 
-把你在 [chatgpt.com](https://chatgpt.com) 的全部对话抓取下来，导出为 **PDF / TXT / Markdown / HTML**。
+把你在 **ChatGPT、Claude、Gemini、Grok** 的对话抓取下来，导出为 **PDF / TXT / Markdown / HTML**。
 
 分两步走：
 
-1. **浏览器端**：在 chatgpt.com 的控制台运行一段脚本，抓取全部对话，下载 `conversations.json`；
-2. **本地端**：`node export.js` 读取这个 JSON，按条件筛选后生成目标格式（PDF 用 Puppeteer 渲染 HTML，非字符串拼接，排版质量高）。
+1. **浏览器端**：在对应网站的控制台运行抓取脚本，下载统一格式的 `conversations.json`；
+2. **本地端**：`node export.js` 读取这个 JSON，按条件筛选后生成目标格式（PDF 用 Puppeteer 渲染 HTML，非字符串拼接，排版质量高）。四个平台共用同一套筛选/导出功能，输出的标题和文件名会按来源自动切换（如 `claude-export.pdf`）。
+
+## 支持的平台
+
+| 平台 | 抓取脚本 | 方式 | 消息时间戳 | Markdown 结构 |
+| --- | --- | --- | --- | --- |
+| ChatGPT（chatgpt.com） | `scraper/chatgpt-scraper.js` | 页面内调后端接口 | ✅ | ✅ |
+| ChatGPT 备用 | `scraper/chatgpt-scraper-dom.js` | DOM 抓取 | ❌ | ⚠️ 纯文本 |
+| Claude（claude.ai） | `scraper/claude-scraper.js` | 页面内调后端接口 | ✅ | ✅ |
+| Gemini（gemini.google.com） | `scraper/gemini-scraper-dom.js` | DOM 抓取¹ | ❌ | ⚠️ 纯文本 |
+| Grok（grok.com）² | `scraper/grok-scraper.js` | 页面内调后端接口 | ✅ | ✅ |
+
+¹ Gemini 网页端内部走 batchexecute 私有协议，没有干净的 REST 接口，故用 DOM 方式（自动滚动侧边栏和消息区加载全部内容）。
+² 指 grok.com 独立站；X（推特）内嵌的 Grok 是另一套接口，暂不支持。
 
 ```
 ├── scraper/
-│   ├── chatgpt-scraper.js       # 浏览器控制台抓取脚本（API 版，推荐）
-│   └── chatgpt-scraper-dom.js   # 浏览器控制台抓取脚本（DOM 备用版）
+│   ├── chatgpt-scraper.js       # ChatGPT（API 版，推荐）
+│   ├── chatgpt-scraper-dom.js   # ChatGPT（DOM 备用版）
+│   ├── claude-scraper.js        # Claude（API 版）
+│   ├── gemini-scraper-dom.js    # Gemini（DOM 版）
+│   └── grok-scraper.js          # Grok（API 版）
 ├── export.js                    # 本地 CLI 入口
 ├── lib/
 │   ├── args.js                  # 命令行参数解析
@@ -27,26 +43,29 @@
 
 ## 第一步：在浏览器里抓取对话
 
-1. 用 Chrome / Edge 登录 <https://chatgpt.com>；
+以 ChatGPT 为例（Claude / Gemini / Grok 只是换个网站和脚本，步骤完全相同）：
+
+1. 用 Chrome / Edge 登录对应网站（如 <https://chatgpt.com>）；
 2. 按 `F12` 打开开发者工具，切到 **Console（控制台）**；
    - 如果控制台提示需要输入 `allow pasting`，先照做一次；
-3. 把 **`scraper/chatgpt-scraper.js` 的完整内容**粘贴进去，回车；
+3. 把上表中**对应抓取脚本的完整内容**粘贴进去，回车；
 4. 等待进度日志跑完，浏览器会自动下载 `conversations.json`；
 5. 把它放到本项目目录下（或任意位置，之后用 `--input` 指定）。
 
-脚本顶部有 `CONFIG` 可以调：最多抓多少个对话、是否包含归档对话、请求间隔等。
+每个脚本顶部都有 `CONFIG` 可以调：最多抓多少个对话、请求间隔等。
+建议第一次先把 `maxConversations` 设成 5 试跑，确认没问题再抓全部。
 
-**两个脚本的区别：**
+各平台的抓取原理与细节：
 
-| | `chatgpt-scraper.js`（推荐） | `chatgpt-scraper-dom.js`（备用） |
-| --- | --- | --- |
-| 原理 | 在页面内调用 ChatGPT 自己的后端接口 | 模拟点击侧边栏 + 自动滚动抓 DOM |
-| 消息时间戳 | ✅ 有 | ❌ 无 |
-| Markdown 结构（代码块等） | ✅ 保留 | ⚠️ 只有渲染后的纯文本 |
-| 懒加载处理 | 接口分页，天然完整 | 自动滚动侧边栏 / 消息区直到加载完 |
-| 稳定性 | 高（不依赖页面样式） | 页面改版可能失效 |
+- **ChatGPT / Claude / Grok（API 版）**：在页面内用你的登录态调用网站自己的后端接口，
+  不依赖页面 DOM，拿到完整消息树、精确时间戳；列表接口自带分页，不存在懒加载问题。
+  Claude 的思维链（thinking）和工具调用会分别标记为 reasoning / tool 类型，
+  由 `--include-reasoning` / `--include-system` 控制是否导出。
+- **Gemini / ChatGPT 备用（DOM 版）**：自动滚动侧边栏加载全部对话 → 逐个点开 →
+  向上滚动加载完整历史 → 抓取渲染后的文本。没有时间戳，代码块围栏会丢失。
+  Gemini 如果展开过思考面板（model-thoughts），也会作为 reasoning 导出。
 
-> 抓取用的是你自己的登录态，只读你自己的数据；请求间有延时以避免触发限流。
+> 抓取用的都是你自己的登录态，只读你自己的数据；请求间有延时以避免触发限流。
 
 ## 第二步：本地安装依赖
 
@@ -101,11 +120,12 @@ node export.js --input conversations.json --format html --merge \
 | `-h, --help` | 帮助 | — |
 
 时间筛选的口径：对话的「创建时间 ~ 最后更新时间」区间与 `[from, to]` **有交集**即保留。
-DOM 备用版抓的数据没有时间戳，时间筛选对这些对话不生效（会保留并提示）。
+DOM 版（Gemini、ChatGPT 备用）抓的数据没有时间戳，时间筛选对这些对话不生效（会保留并提示）。
 
 ### 输出说明
 
-- **合并模式（`--merge`）**：生成单个 `chatgpt-export.{pdf,txt,md,html}`。
+- **合并模式（`--merge`）**：生成单个 `{平台}-export.{pdf,txt,md,html}`（按 JSON 里的
+  `source` 字段自动命名，如 `chatgpt-export.pdf`、`claude-export.pdf`）。
   PDF 首页是目录：**标题 + 日期 + 精确页码**，点击可跳转到对应对话；页脚有页码。
 - **分文件模式**：每个对话生成 `001-标题.pdf` 等独立文件，另生成 `index.pdf` / `index.html` 等索引页，点击标题打开对应文件。
 - 排版：用户消息蓝底、助手消息灰底、思维链黄底、系统消息紫底；每条消息保留时间戳；
@@ -128,8 +148,9 @@ DOM 备用版抓的数据没有时间戳，时间筛选对这些对话不生效�
 - **Linux 下 PDF 中文变方块**：装中文字体，如 `sudo apt install fonts-noto-cjk`；
 - **PDF 里目录点击不跳转**：内部锚点链接需要较新的 Chrome（108+）渲染、且部分 PDF 阅读器不支持，页码仍然有效；
 - **抓取脚本报 401/403**：登录态过期，刷新页面重新运行；
+- **抓取脚本报 404 或字段对不上**：说明该平台接口有变动，欢迎提 issue；Gemini/ChatGPT 可先用 DOM 版脚本兜底；
 - **报 429（限流）**：脚本会自动退避重试；也可调大 `CONFIG.requestDelayMs`。
 
 ## 免责声明
 
-仅用于导出**你自己账号**的聊天记录做个人备份。请遵守 OpenAI 的服务条款，不要用于批量爬取他人数据。
+仅用于导出**你自己账号**的聊天记录做个人备份。请遵守各平台（OpenAI / Anthropic / Google / xAI）的服务条款，不要用于批量爬取他人数据。

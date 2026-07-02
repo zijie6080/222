@@ -1,7 +1,7 @@
 {
   "name": "chatgpt-export",
   "version": "1.0.0",
-  "description": "ChatGPT 聊天记录导出工具：浏览器控制台抓取 + 本地多格式导出（PDF/TXT/Markdown/HTML）",
+  "description": "AI 聊天记录导出工具（ChatGPT/Claude/Gemini/Grok）：浏览器控制台抓取 + 本地多格式导出（PDF/TXT/Markdown/HTML）",
   "type": "module",
   "main": "export.js",
   "bin": {

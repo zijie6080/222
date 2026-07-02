@@ -47,7 +47,7 @@ const conversations = [
 
 const payload = {
   schema: 'chatgpt-export/v1',
-  source: 'sample',
+  source: 'chatgpt.com (sample)',
   exportedAt: new Date('2025-07-01T00:00:00Z').toISOString(),
   conversationCount: conversations.length,
   conversations,

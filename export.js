@@ -9,6 +9,16 @@ import { exportTxt, exportMd, exportHtml } from './lib/writers.js';
 
 const log = (...args) => console.log(...args);
 
+// 根据抓取来源决定文档标题和合并文件名
+function platformInfo(source) {
+  const s = String(source || '').toLowerCase();
+  if (s.includes('claude')) return { docTitle: 'Claude 对话导出', baseName: 'claude-export' };
+  if (s.includes('gemini')) return { docTitle: 'Gemini 对话导出', baseName: 'gemini-export' };
+  if (s.includes('grok')) return { docTitle: 'Grok 对话导出', baseName: 'grok-export' };
+  if (s.includes('chatgpt')) return { docTitle: 'ChatGPT 对话导出', baseName: 'chatgpt-export' };
+  return { docTitle: '聊天记录导出', baseName: 'chat-export' };
+}
+
 async function loadConversations(inputPath) {
   let raw;
   try {
@@ -27,7 +37,7 @@ async function loadConversations(inputPath) {
   if (!Array.isArray(conversations)) {
     throw new Error('输入 JSON 里找不到 conversations 数组，请用 scraper/ 里的脚本重新导出');
   }
-  return conversations;
+  return { conversations, source: Array.isArray(data) ? '' : data.source };
 }
 
 async function main() {
@@ -44,8 +54,9 @@ async function main() {
     return;
   }
 
-  const all = await loadConversations(opts.input);
-  log(`读取 ${opts.input}：共 ${all.length} 个对话`);
+  const { conversations: all, source } = await loadConversations(opts.input);
+  Object.assign(opts, platformInfo(source));
+  log(`读取 ${opts.input}：共 ${all.length} 个对话（来源: ${source || '未知'}）`);
 
   const { conversations, skipped } = applyFilters(all, opts);
   for (const s of skipped) {

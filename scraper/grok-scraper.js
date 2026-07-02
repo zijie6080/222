@@ -1,0 +1,158 @@
+/**
+ * Grok 对话抓取脚本（API 版，适用于 grok.com 独立站）
+ * ------------------------------------------------------------------
+ * 用法：
+ *   1. 登录 https://grok.com
+ *   2. F12 打开开发者工具 → Console
+ *   3. 粘贴整个脚本运行，等待完成后自动下载 conversations.json
+ *
+ * 原理：在页面内调用 grok.com 自己的 REST 接口（cookie 登录态）：
+ *   /rest/app-chat/conversations                       → 对话列表（分页）
+ *   /rest/app-chat/conversations/{id}/load-responses   → 对话消息
+ * 输出与 ChatGPT 抓取脚本相同的 JSON 结构，可直接喂给 export.js。
+ *
+ * 注意：X（推特）内嵌的 Grok 走的是另一套接口，本脚本不适用。
+ */
+(async () => {
+  // ======================= 可调配置 =======================
+  const CONFIG = {
+    maxConversations: Infinity, // 最多抓取多少个对话
+    pageSize: 100,              // 列表分页大小
+    requestDelayMs: 350,        // 请求间隔（毫秒）
+    maxRetries: 5,              // 限流/网络错误重试次数
+    outputFilename: 'conversations.json',
+  };
+  // ========================================================
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const log = (...a) => console.log('%c[grok-export]', 'color:#1d9bf0;font-weight:bold', ...a);
+  const warn = (...a) => console.warn('[grok-export]', ...a);
+
+  async function apiGet(path, attempt = 0) {
+    let res;
+    try {
+      res = await fetch(path, { credentials: 'include', headers: { accept: 'application/json' } });
+    } catch (err) {
+      if (attempt >= CONFIG.maxRetries) throw err;
+      const wait = 1000 * 2 ** attempt;
+      warn(`网络错误，${wait}ms 后重试：${path}`);
+      await sleep(wait);
+      return apiGet(path, attempt + 1);
+    }
+    if (res.status === 429 || res.status >= 500) {
+      if (attempt >= CONFIG.maxRetries) throw new Error(`HTTP ${res.status}：${path}（重试已用尽）`);
+      const wait = 2000 * 2 ** attempt;
+      warn(`HTTP ${res.status}，${wait}ms 后重试`);
+      await sleep(wait);
+      return apiGet(path, attempt + 1);
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`HTTP ${res.status}：登录态失效，请刷新页面重新运行`);
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}：${path}`);
+    return res.json();
+  }
+
+  function toIso(v) {
+    if (!v) return null;
+    // 兼容 ISO 字符串和毫秒/秒时间戳
+    const n = Number(v);
+    const d = Number.isFinite(n) && String(v).length >= 10
+      ? new Date(n > 1e12 ? n : n * 1000)
+      : new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  // ---- 1. 分页拉取对话列表 ----
+  async function listConversations() {
+    const items = [];
+    let pageToken = '';
+    for (;;) {
+      const qs = `pageSize=${CONFIG.pageSize}` + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+      const data = await apiGet(`/rest/app-chat/conversations?${qs}`);
+      const page = data.conversations || data.items || [];
+      items.push(...page);
+      log(`已获取对话列表 ${items.length}`);
+      pageToken = data.nextPageToken || data.next_page_token || '';
+      if (!pageToken || page.length === 0) break;
+      await sleep(CONFIG.requestDelayMs);
+    }
+    return items;
+  }
+
+  // ---- 2. 消息抽取 ----
+  function toMessage(r) {
+    if (!r) return null;
+    const sender = String(r.sender || r.role || '').toLowerCase();
+    const role = sender.includes('human') || sender.includes('user') ? 'user' : 'assistant';
+    const parts = [];
+    if (typeof r.message === 'string' && r.message.trim()) parts.push(r.message);
+    if (Array.isArray(r.generatedImageUrls) && r.generatedImageUrls.length) {
+      parts.push(Array(r.generatedImageUrls.length).fill('[图片]').join(' '));
+    }
+    for (const f of r.fileAttachments || []) {
+      parts.push(`[附件: ${(f && (f.fileName || f.name)) || '文件'}]`);
+    }
+    if (Array.isArray(r.mediaTypes) && r.mediaTypes.some((t) => String(t).toLowerCase().includes('image'))) {
+      if (!parts.some((p) => p.includes('[图片]'))) parts.push('[图片]');
+    }
+    const text = parts.join('\n').trim();
+    if (!text) return null;
+    return { role, kind: 'message', text, createTime: toIso(r.createTime || r.create_time) };
+  }
+
+  // ---- 3. 主流程 ----
+  let list = await listConversations();
+  if (list.length > CONFIG.maxConversations) list = list.slice(0, CONFIG.maxConversations);
+  log(`共 ${list.length} 个对话，开始逐个抓取消息…`);
+
+  const conversations = [];
+  const failures = [];
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    const id = item.conversationId || item.conversation_id || item.id;
+    const title = item.title || '(无标题)';
+    try {
+      const data = await apiGet(`/rest/app-chat/conversations/${id}/load-responses`);
+      const responses = data.responses || data.responseNodes || [];
+      const messages = responses
+        .slice()
+        .sort((a, b) => new Date(a.createTime || a.create_time || 0) - new Date(b.createTime || b.create_time || 0))
+        .map(toMessage)
+        .filter(Boolean);
+      conversations.push({
+        id,
+        title,
+        createTime: toIso(item.createTime || item.create_time),
+        updateTime: toIso(item.modifyTime || item.modify_time || item.updateTime),
+        messages,
+      });
+      log(`[${i + 1}/${list.length}] ✓ ${title}`);
+    } catch (err) {
+      failures.push({ id, title, error: String(err && err.message) });
+      warn(`[${i + 1}/${list.length}] ✗ ${title}：${err.message}`);
+    }
+    await sleep(CONFIG.requestDelayMs);
+  }
+
+  // ---- 4. 下载 JSON ----
+  const payload = {
+    schema: 'chatgpt-export/v1',
+    source: 'grok.com',
+    exportedAt: new Date().toISOString(),
+    conversationCount: conversations.length,
+    failures: failures.length ? failures : undefined,
+    conversations,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = CONFIG.outputFilename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+
+  log(`完成！成功 ${conversations.length} 个，失败 ${failures.length} 个，已下载 ${CONFIG.outputFilename}`);
+  if (failures.length) warn('失败列表：', failures);
+})();
