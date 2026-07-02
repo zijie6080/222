@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "AI 聊天记录导出",
+  "version": "1.0.0",
+  "description": "一键抓取 ChatGPT / Claude / Gemini / Grok 的聊天记录，导出 conversations.json（配合本地 export.js 生成 PDF 等格式）",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://grok.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI 聊天记录导出"
+  }
+}

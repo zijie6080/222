@@ -4,7 +4,7 @@
 
 分两步走：
 
-1. **浏览器端**：在对应网站的控制台运行抓取脚本，下载统一格式的 `conversations.json`；
+1. **浏览器端**：抓取对话并下载统一格式的 `conversations.json`——可以用**谷歌浏览器插件**一键抓取（见下文），也可以把脚本粘到控制台运行；
 2. **本地端**：`node export.js` 读取这个 JSON，按条件筛选后生成目标格式（PDF 用 Puppeteer 渲染 HTML，非字符串拼接，排版质量高）。四个平台共用同一套筛选/导出功能，输出的标题和文件名会按来源自动切换（如 `claude-export.pdf`）。
 
 ## 支持的平台
@@ -27,6 +27,10 @@
 │   ├── claude-scraper.js        # Claude（API 版）
 │   ├── gemini-scraper-dom.js    # Gemini（DOM 版）
 │   └── grok-scraper.js          # Grok（API 版）
+├── extension/                   # Chrome 插件（MV3），一键抓取，免开控制台
+│   ├── manifest.json
+│   ├── popup.html / popup.js    # 弹窗：识别平台、设置选项、显示进度
+│   └── scrapers/                # 由 npm run sync:extension 从 scraper/ 复制
 ├── export.js                    # 本地 CLI 入口
 ├── lib/
 │   ├── args.js                  # 命令行参数解析
@@ -42,6 +46,24 @@
 ---
 
 ## 第一步：在浏览器里抓取对话
+
+两种方式任选其一，产物完全相同。
+
+### 方式 A：Chrome 插件（推荐，免开控制台）
+
+1. 打开 `chrome://extensions`，右上角开启**开发者模式**；
+2. 点**「加载已解压的扩展程序」**，选择本项目的 `extension/` 目录；
+3. 打开并登录 chatgpt.com / claude.ai / gemini.google.com / grok.com 中任意一个；
+4. 点工具栏里的插件图标，弹窗会自动识别当前平台，可设置最多抓取数量
+   （建议第一次先填 5 试跑）、是否包含归档对话（仅 ChatGPT）；
+5. 点**「开始抓取并下载 JSON」**，弹窗里实时显示进度，完成后自动下载
+   `conversations.json`。关闭弹窗不会中断抓取。
+
+插件和控制台脚本共用同一份抓取代码（`extension/scrapers/` 是从 `scraper/`
+复制的副本，改动后用 `npm run sync:extension` 重新同步）。插件只申请了四个目标
+网站的权限，抓取过程全部发生在你自己的浏览器里，数据不经过任何第三方。
+
+### 方式 B：控制台粘贴脚本
 
 以 ChatGPT 为例（Claude / Gemini / Grok 只是换个网站和脚本，步骤完全相同）：
 
@@ -149,7 +171,9 @@ DOM 版（Gemini、ChatGPT 备用）抓的数据没有时间戳，时间筛选�
 - **PDF 里目录点击不跳转**：内部锚点链接需要较新的 Chrome（108+）渲染、且部分 PDF 阅读器不支持，页码仍然有效；
 - **抓取脚本报 401/403**：登录态过期，刷新页面重新运行；
 - **抓取脚本报 404 或字段对不上**：说明该平台接口有变动，欢迎提 issue；Gemini/ChatGPT 可先用 DOM 版脚本兜底；
-- **报 429（限流）**：脚本会自动退避重试；也可调大 `CONFIG.requestDelayMs`。
+- **报 429（限流）**：脚本会自动退避重试；也可调大 `CONFIG.requestDelayMs`；
+- **插件点了没反应**：先刷新目标网页再点插件图标；确认地址栏域名是支持的四个之一（X 内嵌的 Grok 不支持）；
+- **改了 scraper/ 里的脚本但插件行为没变**：运行 `npm run sync:extension` 同步到 `extension/scrapers/`。
 
 ## 免责声明
 

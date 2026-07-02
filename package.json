@@ -9,7 +9,8 @@
   },
   "scripts": {
     "export": "node export.js",
-    "demo": "node export.js --input samples/sample-conversations.json --format pdf,html,md,txt --merge --output ./out"
+    "demo": "node export.js --input samples/sample-conversations.json --format pdf,html,md,txt --merge --output ./out",
+    "sync:extension": "node scripts/sync-extension-scrapers.mjs"
   },
   "engines": {
     "node": ">=18.11"

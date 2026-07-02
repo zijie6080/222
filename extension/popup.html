@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  body {
+    width: 340px; margin: 0; padding: 14px;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 13px; color: #1f2328; background: #fff;
+  }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  .sub { color: #57606a; font-size: 11.5px; margin-bottom: 12px; }
+  .platform { font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .row label { flex: 1; }
+  input[type="number"] { width: 80px; padding: 4px 6px; border: 1px solid #d0d7de; border-radius: 6px; }
+  button {
+    width: 100%; margin-top: 10px; padding: 8px 0;
+    background: #10a37f; color: #fff; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { background: #b8bcc2; cursor: default; }
+  #log {
+    margin-top: 12px; max-height: 220px; overflow-y: auto;
+    background: #f6f7f9; border: 1px solid #e3e6ea; border-radius: 8px;
+    padding: 8px; font-family: Menlo, Consolas, monospace; font-size: 11px;
+    line-height: 1.5; white-space: pre-wrap; word-break: break-all; display: none;
+  }
+  #log .warn { color: #9a6700; }
+  #log .error { color: #cf222e; }
+  #log .done { color: #10a37f; font-weight: 600; }
+  .hint { color: #57606a; font-size: 11.5px; margin-top: 10px; line-height: 1.6; }
+  .hint a { color: #0b57d0; text-decoration: none; }
+  .unsupported { color: #cf222e; }
+</style>
+</head>
+<body>
+  <h1>AI 聊天记录导出</h1>
+  <div class="sub" id="status">检测当前页面…</div>
+
+  <div id="options" style="display:none">
+    <div class="row">
+      <label for="maxConv">最多抓取对话数（留空 = 全部）</label>
+      <input type="number" id="maxConv" min="1" placeholder="全部">
+    </div>
+    <div class="row" id="archivedRow" style="display:none">
+      <label for="archived">包含已归档对话</label>
+      <input type="checkbox" id="archived" checked>
+    </div>
+    <div class="hint" id="domHint" style="display:none">
+      ⚠ 该平台用页面模拟操作方式抓取：抓取期间请保持此标签页在前台，不要操作页面。
+    </div>
+    <button id="start">开始抓取并下载 JSON</button>
+  </div>
+
+  <div id="log"></div>
+
+  <div class="hint" id="footer">
+    完成后会自动下载 conversations.json，再用本地命令生成 PDF：<br>
+    <code>node export.js --input conversations.json --format pdf --merge</code>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
