@@ -153,20 +153,39 @@
   let list = await listConversations();
   // 按更新时间倒序 → 抓取时新对话在前
   list.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
-  // 抓取前筛选（插件设置）：标题关键词 / 时间范围，减少不必要的请求
-  if (CONFIG.titleKeyword) {
-    const kw = String(CONFIG.titleKeyword).toLowerCase();
-    list = list.filter((it) => String(it.name || '').toLowerCase().includes(kw));
+  // 插件「选择对话」：勾选了具体对话时只抓这些，忽略其它筛选
+  const selectedSet = Array.isArray(CONFIG.selectedIds) && CONFIG.selectedIds.length
+    ? new Set(CONFIG.selectedIds) : null;
+  if (selectedSet) {
+    list = list.filter((it) => selectedSet.has(String(it.uuid)));
+  } else {
+    // 抓取前筛选（插件设置）：标题关键词 / 时间范围，减少不必要的请求
+    if (CONFIG.titleKeyword) {
+      const kw = String(CONFIG.titleKeyword).toLowerCase();
+      list = list.filter((it) => String(it.name || '').toLowerCase().includes(kw));
+    }
+    if (CONFIG.fromDate || CONFIG.toDate) {
+      const from = CONFIG.fromDate ? new Date(CONFIG.fromDate) : null;
+      const to = CONFIG.toDate ? new Date(CONFIG.toDate + 'T23:59:59.999') : null;
+      list = list.filter((it) => {
+        const t = new Date(it.updated_at || it.created_at || 0);
+        return (!from || t >= from) && (!to || t <= to);
+      });
+    }
   }
-  if (CONFIG.fromDate || CONFIG.toDate) {
-    const from = CONFIG.fromDate ? new Date(CONFIG.fromDate) : null;
-    const to = CONFIG.toDate ? new Date(CONFIG.toDate + 'T23:59:59.999') : null;
-    list = list.filter((it) => {
-      const t = new Date(it.updated_at || it.created_at || 0);
-      return (!from || t >= from) && (!to || t <= to);
-    });
+  // 插件「选择对话」列表模式：只回传对话清单（不抓详情），供弹窗勾选
+  if (CONFIG.listOnly) {
+    try {
+      chrome.runtime.sendMessage({
+        __aiExport: true,
+        level: 'list',
+        items: list.map((it) => ({ id: String(it.uuid), title: it.name || '(无标题)', time: it.updated_at || it.created_at || null })),
+      });
+    } catch (_) {}
+    log(`已回传对话列表（${list.length} 个），请在弹窗中勾选…`);
+    return;
   }
-  if (list.length > CONFIG.maxConversations) list = list.slice(0, CONFIG.maxConversations);
+  if (!selectedSet && list.length > CONFIG.maxConversations) list = list.slice(0, CONFIG.maxConversations);
   log(`共 ${list.length} 个对话，开始逐个抓取详情…`);
 
   const conversations = [];

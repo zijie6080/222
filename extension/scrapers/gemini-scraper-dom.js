@@ -143,15 +143,32 @@
   }
 
   // ---- 5. 主流程 ----
-  const total = Math.min(await loadAllSidebarItems(), CONFIG.maxConversations);
-  log(`侧边栏共发现 ${convItems().length} 个对话，将抓取 ${total} 个…`);
+  const found = await loadAllSidebarItems();
+  // 插件「选择对话」列表模式：只回传对话清单（不抓内容），供弹窗勾选
+  if (CONFIG.listOnly) {
+    try {
+      chrome.runtime.sendMessage({
+        __aiExport: true,
+        level: 'list',
+        items: convItems().map((el, i) => ({ id: `idx:${i}`, title: itemTitle(el), time: null })),
+      });
+    } catch (_) {}
+    log(`已回传对话列表（${found} 个），请在弹窗中勾选…`);
+    return;
+  }
+  // 勾选了具体对话时只抓这些（按列表序号定位），忽略其它筛选
+  const selectedSet = Array.isArray(CONFIG.selectedIds) && CONFIG.selectedIds.length
+    ? new Set(CONFIG.selectedIds) : null;
+  const total = selectedSet ? convItems().length : Math.min(found, CONFIG.maxConversations);
+  log(`侧边栏共发现 ${convItems().length} 个对话，将抓取 ${selectedSet ? selectedSet.size : total} 个…`);
 
   const conversations = [];
   const failures = [];
   for (let i = 0; i < total; i++) {
     const title = itemTitle(convItems()[i]);
+    if (selectedSet && !selectedSet.has(`idx:${i}`)) continue;
     // 抓取前筛选（插件设置）：标题关键词
-    if (CONFIG.titleKeyword && !title.toLowerCase().includes(String(CONFIG.titleKeyword).toLowerCase())) {
+    if (!selectedSet && CONFIG.titleKeyword && !title.toLowerCase().includes(String(CONFIG.titleKeyword).toLowerCase())) {
       log(`[${i + 1}/${total}] 跳过（标题不含关键词）：${title}`);
       continue;
     }

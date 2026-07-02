@@ -126,12 +126,29 @@
 
   // ---- 5. 主流程 ----
   let links = await loadAllSidebarLinks();
-  // 抓取前筛选（插件设置）：标题关键词
-  if (CONFIG.titleKeyword) {
+  // 插件「选择对话」：勾选了具体对话时只抓这些，忽略其它筛选
+  const selectedSet = Array.isArray(CONFIG.selectedIds) && CONFIG.selectedIds.length
+    ? new Set(CONFIG.selectedIds) : null;
+  if (selectedSet) {
+    links = links.filter((l) => selectedSet.has(l.href));
+  } else if (CONFIG.titleKeyword) {
+    // 抓取前筛选（插件设置）：标题关键词
     const kw = String(CONFIG.titleKeyword).toLowerCase();
     links = links.filter((l) => l.title.toLowerCase().includes(kw));
   }
-  if (links.length > CONFIG.maxConversations) links = links.slice(0, CONFIG.maxConversations);
+  // 插件「选择对话」列表模式：只回传对话清单（不抓详情），供弹窗勾选
+  if (CONFIG.listOnly) {
+    try {
+      chrome.runtime.sendMessage({
+        __aiExport: true,
+        level: 'list',
+        items: links.map((l) => ({ id: l.href, title: l.title, time: null })),
+      });
+    } catch (_) {}
+    log(`已回传对话列表（${links.length} 个），请在弹窗中勾选…`);
+    return;
+  }
+  if (!selectedSet && links.length > CONFIG.maxConversations) links = links.slice(0, CONFIG.maxConversations);
   log(`侧边栏共发现 ${links.length} 个对话，开始逐个抓取…`);
 
   const conversations = [];

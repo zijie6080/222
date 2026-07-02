@@ -19,6 +19,8 @@ const STORAGE_KEY = 'aiExportSettings';
 const $ = (id) => document.getElementById(id);
 let tab = null;
 let platform = null;
+let selectedIds = [];   // 「选择对话」勾选结果（空 = 全部）
+let listItems = null;   // 列表模式回传的对话清单
 
 function appendLog(level, text) {
   const box = $('log');
@@ -75,7 +77,93 @@ function buildConfig() {
   const prefix = $('filePrefix').value;
   cfg.filePrefix = prefix !== '' ? prefix : `${platform.name}-`;
   cfg.timeStyle = $('timeStyle').value;
+  if (selectedIds.length) cfg.selectedIds = selectedIds;
   return cfg;
+}
+
+// ---------------- 选择对话 ----------------
+
+function fmtListDate(iso) {
+  if (!iso) return '';
+  const d = new Date(typeof iso === 'number' ? iso * 1000 : iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function updatePickerCount() {
+  const checked = $('pickerList').querySelectorAll('input:checked').length;
+  $('pickerCount').textContent = `已选 ${checked} / ${listItems ? listItems.length : 0}`;
+}
+
+function renderPickerList(items) {
+  const box = $('pickerList');
+  box.textContent = '';
+  if (!items.length) {
+    box.innerHTML = '<div class="hint" style="padding:10px">当前筛选条件下没有对话</div>';
+    return;
+  }
+  const pre = new Set(selectedIds);
+  for (const it of items) {
+    const row = document.createElement('label');
+    row.className = 'pick-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = it.id;
+    cb.checked = pre.has(it.id);
+    cb.addEventListener('change', updatePickerCount);
+    const title = document.createElement('span');
+    title.className = 'pick-title';
+    title.textContent = it.title || '(无标题)';
+    const date = document.createElement('span');
+    date.className = 'pick-date';
+    date.textContent = fmtListDate(it.time);
+    row.append(cb, title, date);
+    box.appendChild(row);
+  }
+  updatePickerCount();
+}
+
+function pickerVisibleRows() {
+  return [...$('pickerList').querySelectorAll('.pick-item')].filter((r) => r.style.display !== 'none');
+}
+
+async function openPicker() {
+  listItems = null;
+  $('options').style.display = 'none';
+  $('footer').style.display = 'none';
+  $('picker').style.display = 'block';
+  $('pickerList').innerHTML = '<div class="hint" style="padding:10px">正在读取对话列表…</div>';
+  $('pickerSearch').value = '';
+  $('pickerCount').textContent = '';
+  const cfg = buildConfig();
+  delete cfg.selectedIds;
+  cfg.listOnly = true;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (c) => { globalThis.__AI_EXPORT_CONFIG = c; },
+      args: [cfg],
+    });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [platform.file] });
+  } catch (err) {
+    $('pickerList').innerHTML = '';
+    appendLog('error', '读取列表失败：' + err.message + '（请刷新页面后重试）');
+  }
+}
+
+function closePicker(apply) {
+  if (apply && listItems) {
+    selectedIds = [...$('pickerList').querySelectorAll('input:checked')].map((cb) => cb.value);
+  }
+  $('picker').style.display = 'none';
+  $('options').style.display = 'block';
+  $('footer').style.display = 'block';
+  if (selectedIds.length) {
+    $('pickInfoRow').style.display = 'flex';
+    $('pickInfo').textContent = `已指定 ${selectedIds.length} 个对话（将忽略上面的日期/关键词筛选）`;
+  } else {
+    $('pickInfoRow').style.display = 'none';
+  }
 }
 
 async function start() {
@@ -88,7 +176,7 @@ async function start() {
 
   $('start').disabled = true;
   $('log').textContent = '';
-  appendLog('info', `开始抓取 ${platform.name}…（关闭本弹窗不会中断抓取，下载仍会完成）`);
+  appendLog('info', `开始抓取 ${platform.name}${cfg.selectedIds ? `（已指定 ${cfg.selectedIds.length} 个对话）` : ''}…（关闭本弹窗不会中断抓取，下载仍会完成）`);
 
   try {
     // 三次注入进的是同一个 isolated world，globalThis 互通：
@@ -109,6 +197,11 @@ async function start() {
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || !msg.__aiExport) return;
   if (sender.tab && tab && sender.tab.id !== tab.id) return;
+  if (msg.level === 'list') {
+    listItems = msg.items || [];
+    if ($('picker').style.display !== 'none') renderPickerList(listItems);
+    return;
+  }
   if (msg.level === 'done') {
     appendLog('done', '✓ 完成：' + msg.text);
     $('start').disabled = false;
@@ -148,6 +241,27 @@ async function init() {
   for (const id of Object.keys(FIELDS)) {
     if ($(id)) $(id).addEventListener('change', saveSettings);
   }
+
+  // 选择对话
+  $('pickBtn').addEventListener('click', openPicker);
+  $('pickClear').addEventListener('click', () => { selectedIds = []; closePicker(false); });
+  $('pickerCancel').addEventListener('click', () => closePicker(false));
+  $('pickerOk').addEventListener('click', () => closePicker(true));
+  $('pickerAll').addEventListener('click', () => {
+    for (const r of pickerVisibleRows()) r.querySelector('input').checked = true;
+    updatePickerCount();
+  });
+  $('pickerNone').addEventListener('click', () => {
+    for (const r of pickerVisibleRows()) r.querySelector('input').checked = false;
+    updatePickerCount();
+  });
+  $('pickerSearch').addEventListener('input', () => {
+    const kw = $('pickerSearch').value.trim().toLowerCase();
+    for (const r of $('pickerList').querySelectorAll('.pick-item')) {
+      const t = r.querySelector('.pick-title').textContent.toLowerCase();
+      r.style.display = !kw || t.includes(kw) ? 'flex' : 'none';
+    }
+  });
 }
 
 init();

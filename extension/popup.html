@@ -60,6 +60,24 @@
   .hint { color: var(--muted); font-size: 11px; margin-top: 8px; line-height: 1.6; }
   .hint code { background: #f0f2f5; border-radius: 4px; padding: 0 4px; }
   .unsupported { color: #cf222e; }
+
+  /* 小按钮 & 选择对话面板 */
+  .mini { padding: 4px 10px; border: 1px solid #d0d7de; background: #fff; border-radius: 6px;
+    cursor: pointer; font-size: 12px; color: inherit; }
+  .mini:hover { background: #f6f7f9; }
+  .mini.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .picker-head { display: flex; gap: 6px; margin-top: 6px; }
+  .picker-head input { flex: 1; width: auto; }
+  #pickerList { max-height: 300px; overflow-y: auto; border: 1px solid var(--border);
+    border-radius: 8px; margin-top: 8px; }
+  .pick-item { display: flex; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #f0f2f5;
+    cursor: pointer; align-items: flex-start; }
+  .pick-item:last-child { border-bottom: none; }
+  .pick-item:hover { background: #f6f7f9; }
+  .pick-item input { margin: 3px 0 0; flex: none; }
+  .pick-title { flex: 1; overflow-wrap: break-word; word-break: break-word; }
+  .pick-date { color: var(--muted); font-size: 11px; white-space: nowrap; margin-top: 1px; }
+  .picker-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -84,6 +102,14 @@
       <div class="row">
         <label for="titleKeyword">标题包含关键词</label>
         <input type="text" id="titleKeyword" placeholder="留空 = 不筛选">
+      </div>
+      <div class="row">
+        <label>指定具体对话</label>
+        <button id="pickBtn" class="mini">选择对话…</button>
+      </div>
+      <div class="row" id="pickInfoRow" style="display:none">
+        <span class="hint" id="pickInfo" style="margin-top:0"></span>
+        <button id="pickClear" class="mini">清除</button>
       </div>
       <div class="row" id="archivedRow" style="display:none">
         <label>包含已归档对话</label>
@@ -150,6 +176,26 @@
     </div>
 
     <button id="start">开始抓取并导出</button>
+  </div>
+
+  <!-- 选择对话面板 -->
+  <div id="picker" style="display:none">
+    <div class="section">
+      <div class="section-title">ⓘ 勾选要导出的对话（当前筛选条件下的清单）</div>
+      <div class="picker-head">
+        <input type="text" id="pickerSearch" placeholder="搜索标题…">
+        <button id="pickerAll" class="mini">全选</button>
+        <button id="pickerNone" class="mini">全不选</button>
+      </div>
+      <div id="pickerList"><div class="hint" style="padding:10px">正在读取对话列表…</div></div>
+      <div class="picker-foot">
+        <span id="pickerCount" class="hint" style="margin-top:0"></span>
+        <span>
+          <button id="pickerCancel" class="mini">取消</button>
+          <button id="pickerOk" class="mini primary">确定</button>
+        </span>
+      </div>
+    </div>
   </div>
 
   <div id="log"></div>
