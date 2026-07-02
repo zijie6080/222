@@ -45,14 +45,55 @@
   const warn = (...args) => { console.warn('[chatgpt-export]', ...args); report('warn', args.map(String).join(' ')); };
 
   // ---- 1. 拿 accessToken ----
+  // 兜底：会话接口不可用时，从页面内嵌的启动数据里找 accessToken
+  function findTokenInPage() {
+    try {
+      for (const s of document.querySelectorAll('script')) {
+        const m = (s.textContent || '').match(/"accessToken"\s*:\s*"([^"]+)"/);
+        if (m) return m[1];
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // /api/auth/session 经常瞬时 503（Cloudflare/服务端抖动），必须带重试
   async function getAccessToken() {
-    const res = await fetch('/api/auth/session', { credentials: 'include' });
-    if (!res.ok) throw new Error(`获取登录态失败（HTTP ${res.status}），请确认已登录 chatgpt.com`);
-    const data = await res.json();
-    if (!data || !data.accessToken) {
-      throw new Error('未拿到 accessToken，请刷新页面、确认已登录后重试');
+    let lastErr = null;
+    for (let attempt = 0; attempt <= CONFIG.maxRetries; attempt++) {
+      if (attempt > 0) {
+        const wait = 1500 * 2 ** (attempt - 1);
+        warn(`获取登录态失败（${lastErr && lastErr.message}），${wait}ms 后重试（${attempt}/${CONFIG.maxRetries}）`);
+        await sleep(wait);
+      }
+      try {
+        const res = await fetch('/api/auth/session', {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        });
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(`HTTP ${res.status}：未登录或登录已过期，请刷新页面重新登录后再试`);
+        }
+        if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
+        const data = await res.json().catch(() => null);
+        if (data && data.accessToken) return data.accessToken;
+        lastErr = new Error('会话接口没有返回 accessToken');
+      } catch (err) {
+        if (/未登录或登录已过期/.test(String(err && err.message))) throw err;
+        lastErr = err;
+      }
     }
-    return data.accessToken;
+    const fromPage = findTokenInPage();
+    if (fromPage) {
+      warn('会话接口不可用，已从页面数据中取得登录态，继续抓取');
+      return fromPage;
+    }
+    throw new Error(
+      `获取登录态失败（${lastErr && lastErr.message}）。请依次尝试：` +
+      '① 刷新 chatgpt.com 页面、随便发一句话确认能正常对话后重试；' +
+      '② 等一两分钟再试（503 通常是服务端瞬时问题）；' +
+      '③ 仍不行就改用 DOM 备用版（scraper/chatgpt-scraper-dom.js 粘到控制台运行）'
+    );
   }
 
   const token = await getAccessToken();
