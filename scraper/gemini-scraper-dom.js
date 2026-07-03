@@ -36,6 +36,56 @@
   const log = (...a) => { console.log('%c[gemini-export]', 'color:#4285f4;font-weight:bold', ...a); report('info', a.map(String).join(' ')); };
   const warn = (...a) => { console.warn('[gemini-export]', ...a); report('warn', a.map(String).join(' ')); };
 
+  // ---- 对话内文件下载（CONFIG.downloadAssets 开启时生效）----
+  let convAssets = null; // 当前对话待下载的资产
+  const assetStats = { ok: 0, fail: 0 };
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const safeAssetName = (name) => String(name || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'file';
+  const extFromMime = (mime) => ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf', 'text/plain': 'txt' })[String(mime || '').split(';')[0]] || 'bin';
+  function downloadBlobFile(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  }
+  async function downloadConvAssets(convIndex, assets) {
+    const seen = new Set();
+    for (const asset of assets) {
+      const key = asset.fileId || asset.url || asset.name;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      try {
+        let blob;
+        let name = asset.name || '';
+        if (asset.text != null) {
+          blob = new Blob([asset.text], { type: 'text/plain;charset=utf-8' });
+        } else {
+          let url = asset.url;
+          // 直接使用收集到的 URL（相对路径补当前站点 origin）
+          if (url && url.startsWith('/')) url = location.origin + url;
+          if (!url) throw new Error('无下载地址');
+          const res = await fetch(url, { credentials: 'include' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          blob = await res.blob();
+          if (!name) name = `${asset.fileId || 'file'}.${extFromMime(blob.type)}`;
+        }
+        if (!/\.[A-Za-z0-9]{1,5}$/.test(name)) name += `.${extFromMime(blob.type)}`;
+        const filename = `${pad3(convIndex)}-${safeAssetName(name)}`;
+        downloadBlobFile(blob, filename);
+        assetStats.ok++;
+        log(`已下载 ${filename}`);
+      } catch (err) {
+        assetStats.fail++;
+        warn(`文件下载失败（${asset.name || asset.fileId || asset.url || '?'}）：${err && err.message}`);
+      }
+      await sleep(400);
+    }
+  }
+
+
   const convItemSelector = '[data-test-id="conversation"], .conversation-items-container .conversation';
   const messageSelector = 'user-query, model-response';
 
@@ -123,6 +173,14 @@
   function scrapeMessages() {
     const messages = [];
     for (const el of document.querySelectorAll(messageSelector)) {
+      if (convAssets) {
+        for (const img of el.querySelectorAll('img')) {
+          const src = img.currentSrc || img.src || '';
+          if (/^https?:/i.test(src) && (img.naturalWidth || 999) > 64) {
+            convAssets.push({ url: src, name: (src.split('/').pop() || '').split('?')[0] });
+          }
+        }
+      }
       const isUser = el.tagName.toLowerCase() === 'user-query';
       if (isUser) {
         const text = extractText(el.querySelector('.query-text') || el);
@@ -175,6 +233,7 @@
     try {
       await openConversation(i, title);
       await loadFullHistory();
+      convAssets = CONFIG.downloadAssets ? [] : null;
       conversations.push({
         id: (location.pathname.match(/\/app\/([\w-]+)/) || [])[1] || `gemini-${i + 1}`,
         title,
@@ -182,6 +241,7 @@
         updateTime: null,
         messages: scrapeMessages(),
       });
+      if (convAssets && convAssets.length) await downloadConvAssets(i + 1, convAssets);
       log(`[${i + 1}/${total}] ✓ ${title}`);
     } catch (err) {
       failures.push({ index: i, title, error: String(err && err.message) });
@@ -190,6 +250,8 @@
   }
 
   // ---- 6. 下载 JSON ----
+  if (CONFIG.downloadAssets) log(`文件下载：成功 ${assetStats.ok} 个，失败 ${assetStats.fail} 个`);
+
   const payload = {
     schema: 'chatgpt-export/v1',
     source: 'gemini.google.com (dom)',

@@ -15,6 +15,35 @@
 
   const pad = (n) => String(n).padStart(2, '0');
 
+  // 导出产物标签的多语言表（cfg.lang: zh/en/ja，默认 zh，控制台老用法不变）
+  const L10N = {
+    zh: {
+      user: '用户', assistant: '助手', thinking: '助手 · 思考过程', tool: '工具输出',
+      system: '系统', unknown: '未知', untitled: '(无标题)',
+      created: (t) => `创建于 ${t}`, updated: (t) => `最后更新 ${t}`, msgs: (n) => `${n} 条消息`,
+      exportedAt: (t) => `导出时间 ${t}`, total: (n) => `共 ${n} 个对话`, toc: '目录', original: '原对话',
+      docTitle: (name) => (name ? `${name} 对话导出` : '聊天记录导出'),
+      printHint: '🖨 按 <b>Ctrl/⌘ + P</b>，目标选择「另存为 PDF」即可生成 PDF。此提示条不会被打印。需要带精确页码目录和代码高亮的高质量 PDF，请用仓库里的本地命令 node export.js。',
+    },
+    en: {
+      user: 'User', assistant: 'Assistant', thinking: 'Assistant · Thinking', tool: 'Tool output',
+      system: 'System', unknown: 'Unknown', untitled: '(untitled)',
+      created: (t) => `Created ${t}`, updated: (t) => `Updated ${t}`, msgs: (n) => `${n} messages`,
+      exportedAt: (t) => `Exported at ${t}`, total: (n) => `${n} conversations`, toc: 'Contents', original: 'Original chat',
+      docTitle: (name) => (name ? `${name} Conversation Export` : 'Chat Export'),
+      printHint: '🖨 Press <b>Ctrl/⌘ + P</b> and choose "Save as PDF" as the destination. This banner will not be printed. For a high-quality PDF with page-numbered TOC and code highlighting, use the local command node export.js.',
+    },
+    ja: {
+      user: 'ユーザー', assistant: 'アシスタント', thinking: 'アシスタント・思考', tool: 'ツール出力',
+      system: 'システム', unknown: '不明', untitled: '（無題）',
+      created: (t) => `作成 ${t}`, updated: (t) => `最終更新 ${t}`, msgs: (n) => `${n} 件のメッセージ`,
+      exportedAt: (t) => `エクスポート日時 ${t}`, total: (n) => `全 ${n} 件の会話`, toc: '目次', original: '元の会話',
+      docTitle: (name) => (name ? `${name} 会話エクスポート` : 'チャット履歴エクスポート'),
+      printHint: '🖨 <b>Ctrl/⌘ + P</b> を押して出力先に「PDF に保存」を選ぶと PDF を生成できます。このバナーは印刷されません。ページ番号付き目次とコードハイライトの高品質 PDF はローカルコマンド node export.js をご利用ください。',
+    },
+  };
+  const langOf = (cfg) => L10N[(cfg && cfg.lang)] || L10N.zh;
+
   // timeStyle: 'iso'（默认，24h）| 'zh'（中文日期）| '12h'
   function fmtTime(iso, timeStyle) {
     if (!iso) return '';
@@ -32,13 +61,13 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  function roleLabel(m) {
-    if (m.kind === 'reasoning') return '助手 · 思考过程';
-    if (m.kind === 'tool') return '工具输出';
-    if (m.kind === 'system' || m.role === 'system') return '系统';
-    if (m.role === 'user') return '用户';
-    if (m.role === 'assistant') return '助手';
-    return m.role || '未知';
+  function roleLabel(m, L) {
+    if (m.kind === 'reasoning') return L.thinking;
+    if (m.kind === 'tool') return L.tool;
+    if (m.kind === 'system' || m.role === 'system') return L.system;
+    if (m.role === 'user') return L.user;
+    if (m.role === 'assistant') return L.assistant;
+    return m.role || L.unknown;
   }
 
   function msgClass(m) {
@@ -57,13 +86,13 @@
     return '';
   }
 
-  function docTitle(source) {
+  function docTitle(source, L) {
     const s = String(source || '').toLowerCase();
-    if (s.includes('claude')) return 'Claude 对话导出';
-    if (s.includes('gemini')) return 'Gemini 对话导出';
-    if (s.includes('grok')) return 'Grok 对话导出';
-    if (s.includes('chatgpt')) return 'ChatGPT 对话导出';
-    return '聊天记录导出';
+    if (s.includes('claude')) return L.docTitle('Claude');
+    if (s.includes('gemini')) return L.docTitle('Gemini');
+    if (s.includes('grok')) return L.docTitle('Grok');
+    if (s.includes('chatgpt')) return L.docTitle('ChatGPT');
+    return L.docTitle('');
   }
 
   function sanitize(name) {
@@ -91,53 +120,58 @@
   }
 
   function convMetaLines(c, cfg, source) {
+    const L = langOf(cfg);
     const meta = [];
-    if (c.createTime) meta.push(`创建于 ${fmtTime(c.createTime, cfg.timeStyle)}`);
-    if (c.updateTime) meta.push(`最后更新 ${fmtTime(c.updateTime, cfg.timeStyle)}`);
-    meta.push(`${c.messages.length} 条消息`);
+    if (c.createTime) meta.push(L.created(fmtTime(c.createTime, cfg.timeStyle)));
+    if (c.updateTime) meta.push(L.updated(fmtTime(c.updateTime, cfg.timeStyle)));
+    meta.push(L.msgs(c.messages.length));
     const url = cfg.includeLinks !== false ? convUrl(source, c.id) : '';
     return { meta: meta.join(' · '), url };
   }
 
   // ---------------- Markdown ----------------
   function convToMd(c, i, cfg, source) {
+    const L = langOf(cfg);
     const { meta, url } = convMetaLines(c, cfg, source);
-    const lines = [`## ${i + 1}. ${c.title || '(无标题)'}`, '', `> ${meta}`];
-    if (url) lines.push(`>`, `> 原对话：<${url}>`);
+    const lines = [`## ${i + 1}. ${c.title || L.untitled}`, '', `> ${meta}`];
+    if (url) lines.push(`>`, `> ${L.original}: <${url}>`);
     lines.push('');
     for (const m of c.messages) {
       const t = cfg.showTimestamps !== false && m.createTime ? ` · ${fmtTime(m.createTime, cfg.timeStyle)}` : '';
-      lines.push(`### ${roleLabel(m)}${t}`, '', m.text, '');
+      lines.push(`### ${roleLabel(m, L)}${t}`, '', m.text, '');
     }
     return lines.join('\n');
   }
 
   function buildMd(convs, cfg, source, stamp) {
-    const header = `# ${docTitle(source)}\n\n> 导出时间 ${fmtTime(new Date().toISOString(), cfg.timeStyle)} · 共 ${convs.length} 个对话\n`;
-    const toc = convs.map((c, i) => `- [${i + 1}. ${c.title || '(无标题)'}](#conv-${i})`).join('\n');
+    const L = langOf(cfg);
+    const header = `# ${docTitle(source, L)}\n\n> ${L.exportedAt(fmtTime(new Date().toISOString(), cfg.timeStyle))} · ${L.total(convs.length)}\n`;
+    const toc = convs.map((c, i) => `- [${i + 1}. ${c.title || L.untitled}](#conv-${i})`).join('\n');
     const body = convs.map((c, i) => `<a id="conv-${i}"></a>\n\n${convToMd(c, i, cfg, source)}`).join('\n\n---\n\n');
-    return `${header}\n## 目录\n\n${toc}\n\n---\n\n${body}\n`;
+    return `${header}\n## ${L.toc}\n\n${toc}\n\n---\n\n${body}\n`;
   }
 
   // ---------------- TXT ----------------
   const HR = '='.repeat(72);
   const hr2 = '-'.repeat(72);
   function convToTxt(c, i, cfg, source) {
+    const L = langOf(cfg);
     const { meta, url } = convMetaLines(c, cfg, source);
-    const lines = [HR, `${i + 1}. ${c.title || '(无标题)'}`, meta];
-    if (url) lines.push(`原对话：${url}`);
+    const lines = [HR, `${i + 1}. ${c.title || L.untitled}`, meta];
+    if (url) lines.push(`${L.original}: ${url}`);
     lines.push(HR, '');
     for (const m of c.messages) {
       const t = cfg.showTimestamps !== false && m.createTime ? `  ${fmtTime(m.createTime, cfg.timeStyle)}` : '';
-      lines.push(`【${roleLabel(m)}】${t}`, m.text, '', hr2, '');
+      lines.push(`【${roleLabel(m, L)}】${t}`, m.text, '', hr2, '');
     }
     return lines.join('\n');
   }
 
   function buildTxt(convs, cfg, source) {
+    const L = langOf(cfg);
     const head = [
-      docTitle(source),
-      `导出时间 ${fmtTime(new Date().toISOString(), cfg.timeStyle)} · 共 ${convs.length} 个对话`,
+      docTitle(source, L),
+      `${L.exportedAt(fmtTime(new Date().toISOString(), cfg.timeStyle))} · ${L.total(convs.length)}`,
       '',
     ].join('\n');
     return `${head}\n${convs.map((c, i) => convToTxt(c, i, cfg, source)).join('\n\n')}`;
@@ -177,30 +211,31 @@
   .print-hint { position: sticky; top: 0; z-index: 9; background: #fff8e1;
     border-bottom: 1px solid #eadfa9; padding: 10px 16px; font-size: 13px; color: #6b5d1f; }
   `;
-  const PRINT_HINT = '<div class="print-hint">🖨 按 <b>Ctrl/⌘ + P</b>，目标选择「另存为 PDF」即可生成 PDF。' +
-    '此提示条不会被打印。需要带精确页码目录和代码高亮的高质量 PDF，请用仓库里的本地命令 node export.js。</div>';
+  const printHintHtml = (L) => `<div class="print-hint">${L.printHint}</div>`;
   const PRINT_SCRIPT = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});</script>';
 
   function buildHtml(convs, cfg, source, opts) {
     const print = !!(opts && opts.print);
-    const title = docTitle(source);
+    const L = langOf(cfg);
+    const title = docTitle(source, L);
     const toc = convs
-      .map((c, i) => `<a href="#conv-${i}">${i + 1}. ${esc(c.title || '(无标题)')}</a>`)
+      .map((c, i) => `<a href="#conv-${i}">${i + 1}. ${esc(c.title || L.untitled)}</a>`)
       .join('\n');
     const sections = convs
       .map((c, i) => {
         const { meta, url } = convMetaLines(c, cfg, source);
-        const link = url ? ` · <a href="${esc(url)}">原对话</a>` : '';
+        const link = url ? ` · <a href="${esc(url)}">${esc(L.original)}</a>` : '';
         const msgs = c.messages
           .map((m) => {
             const t = cfg.showTimestamps !== false && m.createTime ? fmtTime(m.createTime, cfg.timeStyle) : '';
-            return `<div class="msg ${msgClass(m)}"><div class="msg-head"><span class="who">${esc(roleLabel(m))}</span><span class="when">${esc(t)}</span></div><div class="msg-body">${esc(m.text)}</div></div>`;
+            return `<div class="msg ${msgClass(m)}"><div class="msg-head"><span class="who">${esc(roleLabel(m, L))}</span><span class="when">${esc(t)}</span></div><div class="msg-body">${esc(m.text)}</div></div>`;
           })
           .join('\n');
-        return `<section id="conv-${i}"><h2>${i + 1}. ${esc(c.title || '(无标题)')}</h2><div class="conv-meta">${esc(meta)}${link}</div>\n${msgs}</section>`;
+        return `<section id="conv-${i}"><h2>${i + 1}. ${esc(c.title || L.untitled)}</h2><div class="conv-meta">${esc(meta)}${link}</div>\n${msgs}</section>`;
       })
       .join('\n');
-    return `<!DOCTYPE html>\n<html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${HTML_CSS}${print ? PRINT_CSS : ''}</style></head>\n<body>${print ? PRINT_HINT : ''}<div class="page"><h1>${esc(title)}</h1><div class="doc-meta">导出时间 ${esc(fmtTime(new Date().toISOString(), cfg.timeStyle))} · 共 ${convs.length} 个对话</div>\n<nav class="toc">${toc}</nav>\n${sections}</div>${print ? PRINT_SCRIPT : ''}</body></html>`;
+    const htmlLang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[(cfg && cfg.lang) || 'zh'] || 'zh-CN';
+    return `<!DOCTYPE html>\n<html lang="${htmlLang}"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${HTML_CSS}${print ? PRINT_CSS : ''}</style></head>\n<body>${print ? printHintHtml(L) : ''}<div class="page"><h1>${esc(title)}</h1><div class="doc-meta">${esc(L.exportedAt(fmtTime(new Date().toISOString(), cfg.timeStyle)))} · ${esc(L.total(convs.length))}</div>\n<nav class="toc">${toc}</nav>\n${sections}</div>${print ? PRINT_SCRIPT : ''}</body></html>`;
   }
 
   // PDF 走浏览器打印通道：生成打印优化 HTML，新标签页打开后自动弹出打印对话框

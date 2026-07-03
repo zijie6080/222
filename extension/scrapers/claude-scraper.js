@@ -35,6 +35,56 @@
   const log = (...a) => { console.log('%c[claude-export]', 'color:#d97757;font-weight:bold', ...a); report('info', a.map(String).join(' ')); };
   const warn = (...a) => { console.warn('[claude-export]', ...a); report('warn', a.map(String).join(' ')); };
 
+  // ---- 对话内文件下载（CONFIG.downloadAssets 开启时生效）----
+  let convAssets = null; // 当前对话待下载的资产
+  const assetStats = { ok: 0, fail: 0 };
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const safeAssetName = (name) => String(name || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'file';
+  const extFromMime = (mime) => ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf', 'text/plain': 'txt' })[String(mime || '').split(';')[0]] || 'bin';
+  function downloadBlobFile(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  }
+  async function downloadConvAssets(convIndex, assets) {
+    const seen = new Set();
+    for (const asset of assets) {
+      const key = asset.fileId || asset.url || asset.name;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      try {
+        let blob;
+        let name = asset.name || '';
+        if (asset.text != null) {
+          blob = new Blob([asset.text], { type: 'text/plain;charset=utf-8' });
+        } else {
+          let url = asset.url;
+          // 直接使用收集到的 URL（相对路径补当前站点 origin）
+          if (url && url.startsWith('/')) url = location.origin + url;
+          if (!url) throw new Error('无下载地址');
+          const res = await fetch(url, { credentials: 'include' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          blob = await res.blob();
+          if (!name) name = `${asset.fileId || 'file'}.${extFromMime(blob.type)}`;
+        }
+        if (!/\.[A-Za-z0-9]{1,5}$/.test(name)) name += `.${extFromMime(blob.type)}`;
+        const filename = `${pad3(convIndex)}-${safeAssetName(name)}`;
+        downloadBlobFile(blob, filename);
+        assetStats.ok++;
+        log(`已下载 ${filename}`);
+      } catch (err) {
+        assetStats.fail++;
+        warn(`文件下载失败（${asset.name || asset.fileId || asset.url || '?'}）：${err && err.message}`);
+      }
+      await sleep(400);
+    }
+  }
+
+
   async function apiGet(path, attempt = 0) {
     let res;
     try {
@@ -136,9 +186,19 @@
     // 老格式：没有 content 块时退回顶层 text
     if (!texts.length && typeof m.text === 'string' && m.text.trim()) texts.push(m.text);
     // 附件 / 上传的文件
-    for (const a of m.attachments || []) texts.push(`[附件: ${(a && a.file_name) || '文件'}]`);
+    for (const a of m.attachments || []) {
+      texts.push(`[附件: ${(a && a.file_name) || '文件'}]`);
+      // 上传文档的提取文本另存为 .txt（Claude 里真正可恢复的附件内容）
+      if (convAssets && a && a.extracted_content) {
+        convAssets.push({ text: a.extracted_content, name: `${(a.file_name || 'attachment')}.txt` });
+      }
+    }
     for (const f of m.files || []) {
       texts.push(f && f.file_kind === 'image' ? '[图片]' : `[文件: ${(f && f.file_name) || ''}]`);
+      if (convAssets && f) {
+        const u = f.download_url || f.file_url || f.preview_url || f.thumbnail_url;
+        if (u) convAssets.push({ url: u, name: f.file_name || '' });
+      }
     }
 
     const out = [];
@@ -197,6 +257,7 @@
       const detail = await apiGet(
         `/api/organizations/${orgId}/chat_conversations/${item.uuid}?tree=True&rendering_mode=messages&render_all_tools=true`
       );
+      convAssets = CONFIG.downloadAssets ? [] : null;
       const messages = (detail.chat_messages || []).flatMap(extractFromChatMessage);
       conversations.push({
         id: item.uuid,
@@ -205,6 +266,7 @@
         updateTime: toIso(detail.updated_at) || toIso(item.updated_at),
         messages,
       });
+      if (convAssets && convAssets.length) await downloadConvAssets(i + 1, convAssets);
       log(`[${i + 1}/${list.length}] ✓ ${title}`);
     } catch (err) {
       failures.push({ id: item.uuid, title, error: String(err && err.message) });
@@ -214,6 +276,8 @@
   }
 
   // ---- 5. 下载 JSON ----
+  if (CONFIG.downloadAssets) log(`文件下载：成功 ${assetStats.ok} 个，失败 ${assetStats.fail} 个`);
+
   const payload = {
     schema: 'chatgpt-export/v1',
     source: 'claude.ai',

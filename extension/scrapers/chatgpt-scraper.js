@@ -44,6 +44,60 @@
   const log = (...args) => { console.log('%c[chatgpt-export]', 'color:#10a37f;font-weight:bold', ...args); report('info', args.map(String).join(' ')); };
   const warn = (...args) => { console.warn('[chatgpt-export]', ...args); report('warn', args.map(String).join(' ')); };
 
+  // ---- 对话内文件下载（CONFIG.downloadAssets 开启时生效）----
+  let convAssets = null; // 当前对话待下载的资产
+  const assetStats = { ok: 0, fail: 0 };
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const safeAssetName = (name) => String(name || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'file';
+  const extFromMime = (mime) => ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf', 'text/plain': 'txt' })[String(mime || '').split(';')[0]] || 'bin';
+  function downloadBlobFile(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  }
+  async function downloadConvAssets(convIndex, assets) {
+    const seen = new Set();
+    for (const asset of assets) {
+      const key = asset.fileId || asset.url || asset.name;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      try {
+        let blob;
+        let name = asset.name || '';
+        if (asset.text != null) {
+          blob = new Blob([asset.text], { type: 'text/plain;charset=utf-8' });
+        } else {
+          let url = asset.url;
+          if (!url && asset.fileId) {
+            // 通过 ChatGPT 文件接口换取签名下载地址
+            const info = await apiGet(`/backend-api/files/${asset.fileId}/download`);
+            url = info.download_url || info.downloadUrl || null;
+          }
+          if (url && url.startsWith('/')) url = location.origin + url;
+          if (!url) throw new Error('无下载地址');
+          const res = await fetch(url, { credentials: 'include' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          blob = await res.blob();
+          if (!name) name = `${asset.fileId || 'file'}.${extFromMime(blob.type)}`;
+        }
+        if (!/\.[A-Za-z0-9]{1,5}$/.test(name)) name += `.${extFromMime(blob.type)}`;
+        const filename = `${pad3(convIndex)}-${safeAssetName(name)}`;
+        downloadBlobFile(blob, filename);
+        assetStats.ok++;
+        log(`已下载 ${filename}`);
+      } catch (err) {
+        assetStats.fail++;
+        warn(`文件下载失败（${asset.name || asset.fileId || asset.url || '?'}）：${err && err.message}`);
+      }
+      await sleep(400);
+    }
+  }
+
+
   // ---- 1. 拿 accessToken ----
   // 兜底：会话接口不可用时，从页面内嵌的启动数据里找 accessToken
   function findTokenInPage() {
@@ -156,7 +210,10 @@
     const partToText = (p) => {
       if (typeof p === 'string') return p;
       if (!p || typeof p !== 'object') return '';
-      if (p.content_type === 'image_asset_pointer') return '[图片]';
+      if (p.content_type === 'image_asset_pointer') {
+        if (convAssets && p.asset_pointer) convAssets.push({ fileId: String(p.asset_pointer).split('://')[1] });
+        return '[图片]';
+      }
       if (p.content_type === 'video_container_asset_pointer') return '[视频]';
       if (p.content_type === 'audio_asset_pointer') return '[音频]';
       if (p.content_type === 'audio_transcription') return p.text || '';
@@ -213,6 +270,12 @@
     const messages = [];
     for (const m of chain) {
       const kind = classify(m);
+      // 用户上传的附件（downloadAssets 开启时收集）
+      if (convAssets && m.metadata && Array.isArray(m.metadata.attachments)) {
+        for (const att of m.metadata.attachments) {
+          if (att && att.id) convAssets.push({ fileId: att.id, name: att.name || '' });
+        }
+      }
       // 普通消息里被界面隐藏的节点（如内部标记）直接跳过
       if (kind === 'message' && m.metadata && m.metadata.is_visually_hidden_from_conversation) continue;
       const text = extractContent(m.content);
@@ -281,6 +344,7 @@
     const title = item.title || '(无标题)';
     try {
       const detail = await apiGet(`/backend-api/conversation/${item.id}`);
+      convAssets = CONFIG.downloadAssets ? [] : null;
       conversations.push({
         id: item.id,
         title: detail.title || title,
@@ -288,6 +352,7 @@
         updateTime: toIso(detail.update_time) || toIso(item.update_time),
         messages: extractMessages(detail),
       });
+      if (convAssets && convAssets.length) await downloadConvAssets(i + 1, convAssets);
       log(`[${i + 1}/${list.length}] ✓ ${title}`);
     } catch (err) {
       failures.push({ id: item.id, title, error: String(err && err.message) });
@@ -297,6 +362,8 @@
   }
 
   // ---- 6. 下载 JSON ----
+  if (CONFIG.downloadAssets) log(`文件下载：成功 ${assetStats.ok} 个，失败 ${assetStats.fail} 个`);
+
   const payload = {
     schema: 'chatgpt-export/v1',
     source: 'chatgpt.com',

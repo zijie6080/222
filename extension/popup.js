@@ -1,5 +1,5 @@
-// 弹窗逻辑：四态状态机 configure → confirm → running → done
-// 抓取/筛选/导出语义与旧版完全一致；仅重组信息架构并增加统计、进度与完成态。
+// 弹窗逻辑：四态状态机 configure → confirm → running → done（多语言 zh/en/ja）
+// 抓取/筛选/导出语义与旧版一致；界面文案经 t() 走 i18n.js 的文案表。
 const PLATFORMS = [
   { hostRe: /(^|\.)chatgpt\.com$/, name: 'ChatGPT', file: 'scrapers/chatgpt-scraper.js', archived: true, hasTime: true, dom: false },
   { hostRe: /(^|\.)claude\.ai$/, name: 'Claude', file: 'scrapers/claude-scraper.js', hasTime: true, dom: false },
@@ -12,7 +12,7 @@ const FIELDS = {
   maxConv: 'value', fromDate: 'value', toDate: 'value', titleKeyword: 'value',
   filePrefix: 'value', fileMode: 'value', timeStyle: 'value',
   archived: 'checked', showTimestamps: 'checked', includeReasoning: 'checked',
-  includeSystem: 'checked', includeLinks: 'checked',
+  includeSystem: 'checked', includeLinks: 'checked', downloadAssets: 'checked',
   fmtJson: 'checked', fmtMd: 'checked', fmtTxt: 'checked', fmtHtml: 'checked', fmtPdf: 'checked',
 };
 const STORAGE_KEY = 'aiExportSettings';
@@ -27,14 +27,48 @@ const $ = (id) => document.getElementById(id);
 let tab = null;
 let platform = null;
 let state = 'configure';
-let rangeMode = 'all';          // all | today | 7d | 30d | custom
-let selectedIds = [];           // 「选择对话」勾选结果（空 = 全部）
-let listItems = null;           // 预取的对话清单
+let rangeMode = 'all';
+let selectedIds = [];
+let listItems = null;
 let prefetching = false;
 let runStart = 0;
 let elapsedTimer = null;
 let downloadedFiles = [];
 let progress = { cur: 0, total: 0 };
+
+// ---------------- i18n ----------------
+let currentLang = 'zh';
+
+function detectLang() {
+  const nav = String(navigator.language || '').toLowerCase();
+  if (nav.startsWith('zh')) return 'zh';
+  if (nav.startsWith('ja')) return 'ja';
+  return 'en';
+}
+
+function t(key, params) {
+  const table = globalThis.AI_EXPORT_I18N || {};
+  const dict = table[currentLang] || {};
+  let s = dict[key];
+  if (s == null) s = (table.zh || {})[key];
+  if (s == null) return key;
+  if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, String(v));
+  return s;
+}
+
+// 刷新 DOM 里的静态文案；动态区（统计/徽标）由各自 update 函数重建
+function applyLanguage() {
+  document.documentElement.lang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[currentLang];
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll('[data-i18n-ph]')) el.placeholder = t(el.dataset.i18nPh);
+  for (const el of document.querySelectorAll('[data-i18n-tip]')) el.dataset.tip = t(el.dataset.i18nTip);
+  if (!platform) {
+    if (state === 'unsupported') $('statusLine').textContent = t('app.noPlatform');
+  }
+  updatePickBadge();
+  updateStats();
+  if (!$('picker').hidden && listItems) updatePickerCount();
+}
 
 // ---------------- 视图切换 ----------------
 const VIEWS = ['unsupported', 'configure', 'confirm', 'running', 'done'];
@@ -60,11 +94,12 @@ async function restoreSettings() {
       if (id in data && $(id)) $(id)[prop] = data[id];
     }
     if (data.rangeMode) setRangeMode(data.rangeMode, false);
+    if (data.lang) { currentLang = data.lang; $('langSel').value = data.lang; }
   } catch (_) {}
 }
 
 async function saveSettings() {
-  const data = { rangeMode };
+  const data = { rangeMode, lang: currentLang };
   for (const [id, prop] of Object.entries(FIELDS)) {
     if ($(id)) data[id] = $(id)[prop];
   }
@@ -79,7 +114,7 @@ function localDateStr(d) {
 
 function rangeDates() {
   const today = new Date();
-  if (rangeMode === 'today') { const t = localDateStr(today); return { from: t, to: t }; }
+  if (rangeMode === 'today') { const t0 = localDateStr(today); return { from: t0, to: t0 }; }
   if (rangeMode === '7d') { const f = new Date(today); f.setDate(f.getDate() - 6); return { from: localDateStr(f), to: localDateStr(today) }; }
   if (rangeMode === '30d') { const f = new Date(today); f.setDate(f.getDate() - 29); return { from: localDateStr(f), to: localDateStr(today) }; }
   if (rangeMode === 'custom') return { from: $('fromDate').value || null, to: $('toDate').value || null };
@@ -87,11 +122,11 @@ function rangeDates() {
 }
 
 function rangeLabel() {
-  const map = { all: '全部时间', today: '今天', '7d': '最近 7 天', '30d': '最近 30 天' };
-  if (rangeMode !== 'custom') return map[rangeMode];
+  if (rangeMode === 'all') return t('range.label.all');
+  if (rangeMode !== 'custom') return t(`range.${rangeMode}`);
   const { from, to } = rangeDates();
-  if (!from && !to) return '全部时间';
-  return `${from || '最早'} → ${to || '今天'}`;
+  if (!from && !to) return t('range.label.all');
+  return t('range.label.custom', { from: from || t('range.earliest'), to: to || t('range.now') });
 }
 
 function setRangeMode(mode, save = true) {
@@ -115,12 +150,12 @@ function filteredCount() {
     if (platform.hasTime) {
       const { from, to } = rangeDates();
       const f = from ? new Date(from) : null;
-      const t = to ? new Date(to + 'T23:59:59.999') : null;
-      if (f || t) {
+      const t0 = to ? new Date(to + 'T23:59:59.999') : null;
+      if (f || t0) {
         items = items.filter((it) => {
           const d = it.time ? new Date(it.time) : null;
           if (!d || Number.isNaN(d.getTime())) return true; // 无时间戳的保留（与抓取端一致）
-          return (!f || d >= f) && (!t || d <= t);
+          return (!f || d >= f) && (!t0 || d <= t0);
         });
       }
     }
@@ -136,8 +171,8 @@ function humanSize(bytes) {
 }
 
 function humanDuration(sec) {
-  if (sec < 60) return `${Math.max(1, Math.round(sec))} 秒`;
-  return `${Math.floor(sec / 60)} 分 ${Math.round(sec % 60)} 秒`;
+  if (sec < 60) return t('time.sec', { n: Math.max(1, Math.round(sec)) });
+  return t('time.minsec', { m: Math.floor(sec / 60), s: Math.round(sec % 60) });
 }
 
 function estimates() {
@@ -155,25 +190,28 @@ function updateStats() {
   if (state !== 'configure' || !platform) return;
   const box = $('statsLine');
   if (prefetching) {
-    box.innerHTML = '<span class="spinner"></span>正在读取对话清单…';
+    box.innerHTML = `<span class="spinner"></span>${t('stats.loading')}`;
     return;
   }
   if (!listItems) {
     box.innerHTML = platform.dom
-      ? '统计需扫描侧边栏 <a class="refresh" id="statsRefresh">点击读取</a>'
-      : '未能读取对话清单 <a class="refresh" id="statsRefresh">重试</a>';
+      ? `${t('stats.geminiManual')} <a class="refresh" id="statsRefresh">${t('stats.load')}</a>`
+      : `${t('stats.failed')} <a class="refresh" id="statsRefresh">${t('stats.retry')}</a>`;
     const a = $('statsRefresh');
     if (a) a.addEventListener('click', prefetchList);
     return;
   }
   const est = estimates();
   if (est.count === 0) {
-    box.innerHTML = '当前筛选条件下<b>没有对话</b>，请放宽条件';
+    box.innerHTML = t('stats.none');
     return;
   }
-  box.innerHTML =
-    `将导出 <b>${est.count}</b> 个对话 · 估 <b>~${est.msgs.toLocaleString()}</b> 条消息` +
-    ` · 约 <b>${humanSize(est.bytes)}</b> · 预计 <b>${humanDuration(est.sec)}</b>`;
+  box.innerHTML = t('stats.line', {
+    count: est.count,
+    msgs: est.msgs.toLocaleString(),
+    size: humanSize(est.bytes),
+    time: humanDuration(est.sec),
+  });
 }
 
 // ---------------- 清单预取（复用抓取脚本的 listOnly 模式） ----------------
@@ -190,7 +228,6 @@ async function prefetchList() {
       args: [cfg],
     });
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [platform.file] });
-    // 结果由 'list' 消息带回；这里只设超时兜底
     setTimeout(() => {
       if (prefetching) { prefetching = false; updateStats(); }
     }, platform.dom ? 60000 : 30000);
@@ -200,7 +237,7 @@ async function prefetchList() {
   }
 }
 
-// ---------------- 配置构建（与旧版字段完全一致 + datePrefix/pdf） ----------------
+// ---------------- 配置构建 ----------------
 function currentFormats() {
   const formats = [];
   if ($('fmtJson').checked) formats.push('json');
@@ -230,50 +267,52 @@ function buildConfig() {
   cfg.includeReasoning = $('includeReasoning').checked;
   cfg.includeSystem = $('includeSystem').checked;
   cfg.includeLinks = $('includeLinks').checked;
+  cfg.downloadAssets = $('downloadAssets').checked;
   const prefix = $('filePrefix').value;
   cfg.filePrefix = prefix !== '' ? prefix : `${platform.name}-`;
   cfg.timeStyle = $('timeStyle').value;
+  cfg.lang = currentLang;
   if (selectedIds.length) cfg.selectedIds = selectedIds;
   return cfg;
 }
 
 // ---------------- 确认摘要 ----------------
-const FMT_LABEL = { json: 'JSON', md: 'Markdown', txt: 'TXT', html: 'HTML', pdf: 'PDF（打印页）' };
-const MODE_LABEL = { merge: '合并为一个文件', split: '每个对话单独文件', splitDate: '每对话一个文件 · 文件名带日期' };
-
 function openConfirm() {
   const cfg = buildConfig();
   if (!cfg.formats.length) {
-    $('statsLine').innerHTML = '<span style="color:var(--danger)">请至少选择一种导出格式</span>';
+    $('statsLine').innerHTML = `<span style="color:var(--danger)">${t('stats.noFormats')}</span>`;
     return;
   }
+  const FMT_LABEL = { json: 'JSON', md: 'Markdown', txt: 'TXT', html: 'HTML', pdf: t('fmt.pdf.confirm') };
   const est = estimates();
   const scope = selectedIds.length
-    ? `已勾选的 ${selectedIds.length} 个对话`
-    : [rangeLabel(), cfg.titleKeyword ? `标题含「${cfg.titleKeyword}」` : null, cfg.maxConversations ? `最多 ${cfg.maxConversations} 个` : null]
+    ? t('confirm.scopeSelected', { n: selectedIds.length })
+    : [rangeLabel(), cfg.titleKeyword ? t('confirm.kw', { kw: cfg.titleKeyword }) : null,
+       cfg.maxConversations ? t('confirm.max', { n: cfg.maxConversations }) : null]
         .filter(Boolean).join(' · ');
   const content = [
-    cfg.showTimestamps ? '时间戳' : null,
-    cfg.includeLinks ? '原对话链接' : null,
-    cfg.includeReasoning ? '思考过程' : null,
-    cfg.includeSystem ? '系统/工具消息' : null,
-  ].filter(Boolean).join('、') || '仅正文';
+    cfg.showTimestamps ? t('step2.timestamps') : null,
+    cfg.includeLinks ? t('step2.links') : null,
+    cfg.includeReasoning ? t('step2.reasoning') : null,
+    cfg.includeSystem ? t('step2.system') : null,
+    cfg.downloadAssets ? t('confirm.assets') : null,
+  ].filter(Boolean).join(' · ') || t('confirm.contentNone');
   const rows = [
-    ['平台', platform.name],
-    ['范围', scope],
-    ['内容', content],
-    ['格式', cfg.formats.map((f) => FMT_LABEL[f]).join(' · ')],
-    ['组织', MODE_LABEL[$('fileMode').value]],
-    ['预估', est
-      ? `${est.count} 个对话 · ~${est.msgs.toLocaleString()} 条消息 · 约 ${humanSize(est.bytes)} · ${humanDuration(est.sec)}`
-      : '（未读取清单，无法预估）'],
+    [t('confirm.platform'), platform.name],
+    [t('confirm.scope'), scope],
+    [t('confirm.content'), content],
+    [t('confirm.formats'), cfg.formats.map((f) => FMT_LABEL[f]).join(' · ')],
+    [t('confirm.layout'), t(`mode.${$('fileMode').value}`)],
+    [t('confirm.estimate'), est
+      ? t('confirm.estLine', { count: est.count, msgs: est.msgs.toLocaleString(), size: humanSize(est.bytes), time: humanDuration(est.sec) })
+      : t('confirm.noEstimate')],
   ];
   $('summaryList').innerHTML = rows
-    .map(([k, v]) => `<div class="srow"><span class="sk">${k}</span><span class="sv"></span></div>`)
+    .map(([k]) => `<div class="srow"><span class="sk"></span><span class="sv"></span></div>`)
     .join('');
-  // 值用 textContent 填充，避免注入
+  const sks = $('summaryList').querySelectorAll('.sk');
   const svs = $('summaryList').querySelectorAll('.sv');
-  rows.forEach(([, v], i) => { svs[i].textContent = v; });
+  rows.forEach(([k, v], i) => { sks[i].textContent = k; svs[i].textContent = v; });
   showView('confirm');
 }
 
@@ -298,7 +337,7 @@ function setProgress(cur, total) {
   progress = { cur, total };
   const pct = total > 0 ? Math.min(100, Math.round((cur / total) * 100)) : 0;
   $('progressFill').style.width = `${pct}%`;
-  $('progressText').textContent = total > 0 ? `${cur} / ${total} 个对话 · ${pct}%` : '';
+  $('progressText').textContent = total > 0 ? t('run.progress', { cur, total, pct }) : '';
 }
 
 async function runExport() {
@@ -308,13 +347,13 @@ async function runExport() {
   $('runLog').textContent = '';
   $('doneLog').textContent = '';
   setProgress(0, 0);
-  setStage('正在读取对话列表…');
+  setStage(t('run.listing'));
   $('elapsedText').textContent = '';
   showView('running');
   runStart = Date.now();
   clearInterval(elapsedTimer);
   elapsedTimer = setInterval(() => {
-    $('elapsedText').textContent = `已用时 ${humanDuration((Date.now() - runStart) / 1000)}`;
+    $('elapsedText').textContent = t('run.elapsed', { t: humanDuration((Date.now() - runStart) / 1000) });
   }, 1000);
 
   try {
@@ -326,17 +365,22 @@ async function runExport() {
     });
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [platform.file] });
   } catch (err) {
-    finishRun(false, '注入失败：' + err.message + '（请刷新页面后重试）');
+    finishRun(false, t('inject.fail', { err: err.message }));
   }
 }
 
 function finishRun(success, text) {
   clearInterval(elapsedTimer);
   const used = humanDuration((Date.now() - runStart) / 1000);
+  // 抓取脚本的完成消息是中文（脚本与控制台共用），解析出数字后按界面语言重排
+  const m = String(text).match(/成功 (\d+) 个，失败 (\d+) 个/);
+  const sub = success
+    ? `${m ? t('done.sub', { ok: m[1], fail: m[2] }) : text} · ${t('done.used', { t: used })}`
+    : text;
   $('resultIcon').className = `result-icon ${success ? 'ok' : 'err'}`;
   $('resultIcon').textContent = success ? '✓' : '✕';
-  $('resultTitle').textContent = success ? '导出完成' : '导出失败';
-  $('resultSub').textContent = success ? `${text} · 用时 ${used}` : text;
+  $('resultTitle').textContent = success ? t('done.ok') : t('done.fail');
+  $('resultSub').textContent = sub;
   const fl = $('fileList');
   if (downloadedFiles.length) {
     fl.hidden = false;
@@ -365,7 +409,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     if (!$('picker').hidden) renderPickerList(listItems);
     return;
   }
-  if (state === 'configure' || state === 'confirm') return; // 预取过程中的日志不打扰配置页
+  if (state === 'configure' || state === 'confirm') return;
 
   if (msg.level === 'done') {
     setProgress(progress.total || 1, progress.total || 1);
@@ -382,13 +426,13 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   const m = String(msg.text).match(/\[(\d+)\s*\/\s*(\d+)\]/);
   if (m) {
     setProgress(parseInt(m[1], 10), parseInt(m[2], 10));
-    setStage(`正在抓取对话 ${m[1]} / ${m[2]}`);
+    setStage(t('run.scraping', { cur: m[1], total: m[2] }));
   } else if (/已下载|将下载|打印页/.test(msg.text)) {
-    setStage('正在生成并下载文件…');
+    setStage(t('run.generating'));
     const dm = String(msg.text).match(/^已下载 (.+)$/);
     if (dm) downloadedFiles.push(dm[1]);
   } else if (/对话列表/.test(msg.text)) {
-    setStage('正在读取对话列表…');
+    setStage(t('run.listing'));
   }
 });
 
@@ -402,14 +446,14 @@ function fmtListDate(iso) {
 
 function updatePickerCount() {
   const checked = $('pickerList').querySelectorAll('input:checked').length;
-  $('pickerCount').textContent = `已选 ${checked} / ${listItems ? listItems.length : 0}`;
+  $('pickerCount').textContent = t('picker.count', { sel: checked, total: listItems ? listItems.length : 0 });
 }
 
 function renderPickerList(items) {
   const box = $('pickerList');
   box.textContent = '';
   if (!items || !items.length) {
-    box.innerHTML = '<div class="hintline" style="padding:12px">没有找到对话</div>';
+    box.innerHTML = `<div class="hintline" style="padding:12px">${t('picker.empty')}</div>`;
     return;
   }
   const pre = new Set(selectedIds);
@@ -423,7 +467,7 @@ function renderPickerList(items) {
     cb.addEventListener('change', updatePickerCount);
     const title = document.createElement('span');
     title.className = 'pick-title';
-    title.textContent = it.title || '(无标题)';
+    title.textContent = it.title || t('untitled');
     const date = document.createElement('span');
     date.className = 'pick-date';
     date.textContent = fmtListDate(it.time);
@@ -443,7 +487,7 @@ function openPicker() {
   if (listItems) {
     renderPickerList(listItems);
   } else {
-    $('pickerList').innerHTML = '<div class="hintline" style="padding:12px"><span class="spinner"></span>正在读取对话列表…</div>';
+    $('pickerList').innerHTML = `<div class="hintline" style="padding:12px"><span class="spinner"></span>${t('stats.loading')}</div>`;
     $('pickerCount').textContent = '';
     prefetchList();
   }
@@ -461,7 +505,7 @@ function closePicker(apply) {
 function updatePickBadge() {
   if (selectedIds.length) {
     $('pickBadge').hidden = false;
-    $('pickBadgeText').textContent = `已选 ${selectedIds.length} 个`;
+    $('pickBadgeText').textContent = t('step1.picked', { n: selectedIds.length });
   } else {
     $('pickBadge').hidden = true;
   }
@@ -469,14 +513,24 @@ function updatePickBadge() {
 
 // ---------------- 初始化 ----------------
 async function init() {
+  currentLang = detectLang();
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   let host = '';
   try { host = new URL(tab.url).hostname; } catch (_) {}
   platform = PLATFORMS.find((p) => p.hostRe.test(host));
 
   if (!platform) {
-    $('statusLine').textContent = '未识别到支持的平台';
+    await restoreSettings();
+    $('langSel').value = currentLang;
     showView('unsupported');
+    applyLanguage();
+    $('statusLine').textContent = t('app.noPlatform');
+    $('langSel').addEventListener('change', () => {
+      currentLang = $('langSel').value;
+      saveSettings();
+      applyLanguage();
+      $('statusLine').textContent = t('app.noPlatform');
+    });
     return;
   }
 
@@ -491,10 +545,17 @@ async function init() {
   }
 
   await restoreSettings();
+  $('langSel').value = currentLang;
+  applyLanguage();
   updatePickBadge();
   showView('configure');
 
   // 事件绑定
+  $('langSel').addEventListener('change', () => {
+    currentLang = $('langSel').value;
+    saveSettings();
+    applyLanguage();
+  });
   $('rangeSeg').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-range]');
     if (b && !b.disabled) setRangeMode(b.dataset.range);
@@ -525,8 +586,8 @@ async function init() {
   $('pickerSearch').addEventListener('input', () => {
     const kw = $('pickerSearch').value.trim().toLowerCase();
     for (const r of $('pickerList').querySelectorAll('.pick-item')) {
-      const t = r.querySelector('.pick-title').textContent.toLowerCase();
-      r.style.display = !kw || t.includes(kw) ? 'flex' : 'none';
+      const tt = r.querySelector('.pick-title').textContent.toLowerCase();
+      r.style.display = !kw || tt.includes(kw) ? 'flex' : 'none';
     }
   });
 
@@ -550,9 +611,9 @@ async function init() {
           return true;
         },
       });
-      if (!res || !res.result) appendLog('warn', '打印页打开失败：请允许该网站的弹出式窗口后重试');
+      if (!res || !res.result) appendLog('warn', t('done.pdfBlocked'));
     } catch (err) {
-      appendLog('warn', '打印页打开失败：' + err.message);
+      appendLog('warn', t('done.pdfBlocked'));
     }
   });
 
