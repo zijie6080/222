@@ -165,7 +165,24 @@
     font-variant-ligatures:none; }
   `;
 
-  function buildHtml(convs, cfg, source) {
+  // 打印版附加样式与提示条（opts.print = true 时启用）
+  const PRINT_CSS = `
+  @page { margin: 14mm 12mm; }
+  @media print {
+    .print-hint { display: none !important; }
+    section { break-before: page; }
+    section:first-of-type { break-before: auto; }
+    .msg { break-inside: avoid-page; }
+  }
+  .print-hint { position: sticky; top: 0; z-index: 9; background: #fff8e1;
+    border-bottom: 1px solid #eadfa9; padding: 10px 16px; font-size: 13px; color: #6b5d1f; }
+  `;
+  const PRINT_HINT = '<div class="print-hint">🖨 按 <b>Ctrl/⌘ + P</b>，目标选择「另存为 PDF」即可生成 PDF。' +
+    '此提示条不会被打印。需要带精确页码目录和代码高亮的高质量 PDF，请用仓库里的本地命令 node export.js。</div>';
+  const PRINT_SCRIPT = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});</script>';
+
+  function buildHtml(convs, cfg, source, opts) {
+    const print = !!(opts && opts.print);
     const title = docTitle(source);
     const toc = convs
       .map((c, i) => `<a href="#conv-${i}">${i + 1}. ${esc(c.title || '(无标题)')}</a>`)
@@ -183,7 +200,12 @@
         return `<section id="conv-${i}"><h2>${i + 1}. ${esc(c.title || '(无标题)')}</h2><div class="conv-meta">${esc(meta)}${link}</div>\n${msgs}</section>`;
       })
       .join('\n');
-    return `<!DOCTYPE html>\n<html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${HTML_CSS}</style></head>\n<body><div class="page"><h1>${esc(title)}</h1><div class="doc-meta">导出时间 ${esc(fmtTime(new Date().toISOString(), cfg.timeStyle))} · 共 ${convs.length} 个对话</div>\n<nav class="toc">${toc}</nav>\n${sections}</div></body></html>`;
+    return `<!DOCTYPE html>\n<html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${HTML_CSS}${print ? PRINT_CSS : ''}</style></head>\n<body>${print ? PRINT_HINT : ''}<div class="page"><h1>${esc(title)}</h1><div class="doc-meta">导出时间 ${esc(fmtTime(new Date().toISOString(), cfg.timeStyle))} · 共 ${convs.length} 个对话</div>\n<nav class="toc">${toc}</nav>\n${sections}</div>${print ? PRINT_SCRIPT : ''}</body></html>`;
+  }
+
+  // PDF 走浏览器打印通道：生成打印优化 HTML，新标签页打开后自动弹出打印对话框
+  function buildPrintHtml(convs, cfg, source) {
+    return buildHtml(convs, cfg, source, { print: true });
   }
 
   // ---------------- 汇总构建 ----------------
@@ -201,10 +223,17 @@
     }
 
     const convs = prepare(payload, cfg);
-    const perConvName = (c, i, ext) => `${prefix}${String(i + 1).padStart(3, '0')}-${sanitize(c.title || 'untitled')}.${ext}`;
+    // datePrefix：文件名以对话日期开头（2025-06-15 标题.md），下载目录里天然按日期聚类
+    const perConvName = (c, i, ext) => {
+      if (cfg.datePrefix) {
+        const d = String(c.createTime || c.updateTime || '').slice(0, 10) || '未知日期';
+        return `${prefix}${d} ${sanitize(c.title || 'untitled')}.${ext}`;
+      }
+      return `${prefix}${String(i + 1).padStart(3, '0')}-${sanitize(c.title || 'untitled')}.${ext}`;
+    };
 
     for (const f of formats) {
-      if (f === 'json') continue;
+      if (f === 'json' || f === 'pdf') continue; // pdf 走打印通道，不产出下载文件
       if (convs.length === 0) break;
       if (f === 'md') {
         if (cfg.splitFiles) convs.forEach((c, i) => add(perConvName(c, i, 'md'), convToMd(c, i, cfg, source), 'text/markdown;charset=utf-8'));
@@ -220,12 +249,34 @@
     return files;
   };
 
+  // 打印版构建（纯函数，便于测试；popup 的「打开 PDF 打印页」按钮也会用到缓存结果）
+  globalThis.__AI_EXPORT_BUILD_PRINT = (payload, cfg) => {
+    cfg = cfg || {};
+    return buildPrintHtml(prepare(payload, cfg), cfg, (payload && payload.source) || '');
+  };
+
   // ---------------- 下载 ----------------
   globalThis.__AI_EXPORT_EMIT = async (payload, cfg) => {
+    cfg = cfg || {};
     const report = (level, text) => {
       try { chrome.runtime.sendMessage({ __aiExport: true, level, text }); } catch (_) {}
     };
-    const files = globalThis.__AI_EXPORT_BUILD(payload, cfg || {});
+
+    // PDF：生成打印页并尝试自动打开；被弹窗拦截时留给完成页的按钮兜底
+    const formatsWanted = Array.isArray(cfg.formats) ? cfg.formats : [];
+    if (formatsWanted.includes('pdf')) {
+      const printHtml = globalThis.__AI_EXPORT_BUILD_PRINT(payload, cfg);
+      globalThis.__AI_EXPORT_PRINT_HTML = printHtml;
+      let opened = null;
+      try {
+        opened = window.open('', '_blank');
+        if (opened) { opened.document.write(printHtml); opened.document.close(); }
+      } catch (_) { opened = null; }
+      if (opened) report('info', '已打开 PDF 打印页，在打印对话框选「另存为 PDF」即可');
+      else report('warn', 'PDF 打印页被浏览器拦截，请在完成页点「打开 PDF 打印页」');
+    }
+
+    const files = globalThis.__AI_EXPORT_BUILD(payload, cfg);
     if (files.length > 1) report('info', '将下载多个文件，浏览器若询问「允许下载多个文件」请点允许');
     for (const { name, text, mime } of files) {
       const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
