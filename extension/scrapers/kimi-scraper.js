@@ -236,8 +236,127 @@
     return { role, kind: 'message', text, createTime: toIso(m.created_at || m.create_time || m.timestamp) };
   }
 
+  // ============ DOM 兜底：接口拿不到清单/消息时，直接从页面侧边栏与正文抓（best-effort）============
+  // 这些平台接口未公开、易变；接口失败或返回空时退回此路，保证「至少能识别到侧边栏里的对话」。
+  const NAV_BLACKLIST = /^(新建会话|新对话|新建对话|新的对话|开启新对话|插件|定时任务|更多|设置|帮助|反馈|升级|升级套餐|获取应用程序|下载|历史记录|探索|发现|Agent|智能体|新建|New chat|New Chat|Settings|Help|Explore|Discover|Upgrade|探索灵感)$/i;
+  const _vtext = (el) => (((el && (el.innerText || el.textContent)) || '')).replace(/\s+/g, ' ').trim();
+  function _domScrollable(el) {
+    let c = el;
+    while (c && c !== document.body) { const s = getComputedStyle(c); if (c.scrollHeight > c.clientHeight + 10 && /(auto|scroll)/.test(s.overflowY)) return c; c = c.parentElement; }
+    return document.scrollingElement;
+  }
+  function _domSidebarItems() {
+    const cand = [];
+    for (const el of document.querySelectorAll('a, li, [role="button"], [role="listitem"], [role="option"], [class*="item"], [class*="Item"], [class*="conversation"], [class*="history"]')) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 50 || r.height < 16 || r.height > 110) continue;
+      if (r.left > innerWidth * 0.46 || r.right < 4 || r.bottom < 0 || r.top > innerHeight) continue;
+      if (el.querySelector('a, li, [role="button"], textarea, input')) continue;
+      const t = _vtext(el);
+      if (t.length < 2 || t.length > 80 || NAV_BLACKLIST.test(t)) continue;
+      cand.push([el, t]);
+    }
+    // 按父容器聚类；优先「在可滚动容器内」的组（对话列表通常可滚动，导航区不滚动），再按条目数
+    const groups = new Map();
+    for (const [el, t] of cand) { const p = el.parentElement; if (!p) continue; if (!groups.has(p)) groups.set(p, []); groups.get(p).push([el, t]); }
+    let best = [], bestScore = -1;
+    for (const [, arr] of groups) {
+      const uniq = new Set(arr.map((x) => x[1])); if (uniq.size < 2) continue;
+      const scrollable = _domScrollable(arr[0][0]) !== document.scrollingElement;
+      const score = arr.length + (scrollable ? 1000 : 0);
+      if (score > bestScore) { bestScore = score; best = arr; }
+    }
+    const seen = new Set(), out = [];
+    for (const [el, t] of best) { if (seen.has(t)) continue; seen.add(t); out.push({ el, title: t }); }
+    return out;
+  }
+  async function _domLoadSidebar() {
+    let items = _domSidebarItems();
+    if (!items.length) return [];
+    const container = _domScrollable(items[0].el);
+    let stable = 0, last = 0;
+    while (stable < 3) {
+      container.scrollTop = container.scrollHeight;
+      await sleep(700);
+      const n = _domSidebarItems().length;
+      if (n === last) stable++; else { stable = 0; last = n; }
+    }
+    return _domSidebarItems();
+  }
+  function _domMessageHost() {
+    let host = null, area = 0;
+    for (const el of document.querySelectorAll('div, main, section')) {
+      const r = el.getBoundingClientRect();
+      if (r.left < innerWidth * 0.28 || r.width < 200) continue;
+      if (el.scrollHeight > el.clientHeight && r.width * r.height > area) { area = r.width * r.height; host = el; }
+    }
+    return host || document.querySelector('main') || document.body;
+  }
+  async function _domLoadMessages(host) {
+    let stable = 0, lastH = -1;
+    while (stable < 3) { host.scrollTop = 0; await sleep(600); if (host.scrollHeight === lastH) stable++; else { stable = 0; lastH = host.scrollHeight; } }
+    host.scrollTop = host.scrollHeight;
+  }
+  function _domScrapeMessages(host) {
+    const midX = (() => { const r = host.getBoundingClientRect(); return r.left + r.width / 2; })();
+    const nodes = host.querySelectorAll('[class*="message"], [class*="Message"], [data-testid*="message"], [class*="bubble"], [class*="chat-item"], [class*="markdown"]');
+    const pool = nodes.length ? nodes : host.querySelectorAll('p, li');
+    const seen = new Set(), out = [];
+    for (const el of pool) {
+      if (el.querySelector('[class*="message"], [class*="bubble"], [class*="markdown"]')) continue;
+      const t = _vtext(el); if (t.length < 1 || seen.has(t)) continue; seen.add(t);
+      if (convAssets) for (const img of el.querySelectorAll('img')) { const s = img.currentSrc || img.src || ''; if (/^https?:/i.test(s) && (img.naturalWidth || 999) > 64) convAssets.push({ url: s, name: (s.split('/').pop() || '').split('?')[0] }); }
+      const r = el.getBoundingClientRect();
+      const role = (r.left + r.width / 2) > midX + 40 ? 'user' : 'assistant';
+      out.push({ role, kind: 'message', text: t, createTime: null });
+    }
+    return out;
+  }
+  async function domFallbackFlow(source) {
+    warn('未能通过接口获取会话列表，改用页面抓取（DOM 兜底，可能不含时间戳/代码围栏）');
+    const items = await _domLoadSidebar();
+    if (!items.length) {
+      report('error', '接口和页面都没识别到对话列表：请确认左侧对话列表已展开并已登录；若仍不行，把该平台一条 conversation/list 接口的响应发给作者以精确修复。');
+      return;
+    }
+    if (CONFIG.listOnly) {
+      try { chrome.runtime.sendMessage({ __aiExport: true, level: 'list', items: items.map((it, i) => ({ id: `idx:${i}`, title: it.title, time: null })) }); } catch (_) {}
+      log(`已回传对话列表（${items.length} 个，页面抓取）`);
+      return;
+    }
+    const selectedSet = Array.isArray(CONFIG.selectedIds) && CONFIG.selectedIds.length ? new Set(CONFIG.selectedIds) : null;
+    const total = selectedSet ? items.length : Math.min(items.length, CONFIG.maxConversations);
+    log(`页面共识别到 ${items.length} 个对话，将抓取 ${selectedSet ? selectedSet.size : total} 个…`);
+    const conversations = [], failures = [];
+    for (let i = 0; i < total; i++) {
+      const cur = _domSidebarItems()[i] || items[i];
+      const title = (cur && cur.title) || `对话 ${i + 1}`;
+      if (selectedSet && !selectedSet.has(`idx:${i}`)) continue;
+      if (!selectedSet && CONFIG.titleKeyword && !title.toLowerCase().includes(String(CONFIG.titleKeyword).toLowerCase())) continue;
+      try {
+        (cur.el.querySelector('a, button') || cur.el).click();
+        await sleep(1600);
+        const host = _domMessageHost();
+        await _domLoadMessages(host);
+        convAssets = CONFIG.downloadAssets ? [] : null;
+        const messages = _domScrapeMessages(host);
+        conversations.push({ id: `dom-${i + 1}`, title, createTime: null, updateTime: null, messages });
+        if (convAssets && convAssets.length) await downloadConvAssets(i + 1, convAssets);
+        log(`[${i + 1}/${total}] ✓ ${title}`);
+      } catch (err) { failures.push({ index: i, title, error: String(err && err.message) }); warn(`[${i + 1}/${total}] ✗ ${title}：${err && err.message}`); }
+    }
+    if (CONFIG.downloadAssets) log(`文件下载：成功 ${assetStats.ok} 个，失败 ${assetStats.fail} 个`);
+    const payload = { schema: 'chatgpt-export/v1', source, exportedAt: new Date().toISOString(), conversationCount: conversations.length, failures: failures.length ? failures : undefined, conversations };
+    if (globalThis.__AI_EXPORT_EMIT) await globalThis.__AI_EXPORT_EMIT(payload, CONFIG);
+    else { const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = CONFIG.outputFilename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000); }
+    log(`完成！成功 ${conversations.length} 个，失败 ${failures.length} 个`);
+    report('done', `成功 ${conversations.length} 个，失败 ${failures.length} 个`);
+  }
+
   // ---- 3. 主流程 ----
-  let list = await listConversations();
+  let list = [];
+  try { list = await listConversations(); } catch (e) { warn('接口获取会话列表失败：' + (e && e.message)); }
+  if (!list.length) { await domFallbackFlow('kimi.com (dom)'); return; }
   const idOf = (it) => String(it.id || it.chat_id || it.conversation_id);
   const titleOf = (it) => it.name || it.title || '(无标题)';
   const timeOf = (it) => it.updated_at || it.created_at || it.update_time || null;
