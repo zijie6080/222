@@ -15,6 +15,10 @@ function platformInfo(source) {
   if (s.includes('claude')) return { docTitle: 'Claude 对话导出', baseName: 'claude-export' };
   if (s.includes('gemini')) return { docTitle: 'Gemini 对话导出', baseName: 'gemini-export' };
   if (s.includes('grok')) return { docTitle: 'Grok 对话导出', baseName: 'grok-export' };
+  if (s.includes('deepseek')) return { docTitle: 'DeepSeek 对话导出', baseName: 'deepseek-export' };
+  if (s.includes('kimi')) return { docTitle: 'Kimi 对话导出', baseName: 'kimi-export' };
+  if (s.includes('chatglm') || s.includes('zhipu')) return { docTitle: '智谱清言 对话导出', baseName: 'zhipu-export' };
+  if (s.includes('doubao')) return { docTitle: '豆包 对话导出', baseName: 'doubao-export' };
   if (s.includes('chatgpt')) return { docTitle: 'ChatGPT 对话导出', baseName: 'chatgpt-export' };
   return { docTitle: '聊天记录导出', baseName: 'chat-export' };
 }

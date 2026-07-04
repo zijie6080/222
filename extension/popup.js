@@ -5,6 +5,10 @@ const PLATFORMS = [
   { hostRe: /(^|\.)claude\.ai$/, name: 'Claude', file: 'scrapers/claude-scraper.js', hasTime: true, dom: false },
   { hostRe: /(^|\.)gemini\.google\.com$/, name: 'Gemini', file: 'scrapers/gemini-scraper-dom.js', dom: true, hasTime: false },
   { hostRe: /(^|\.)grok\.com$/, name: 'Grok', file: 'scrapers/grok-scraper.js', hasTime: true, dom: false },
+  { hostRe: /(^|\.)deepseek\.com$/, name: 'DeepSeek', file: 'scrapers/deepseek-scraper.js', hasTime: true, dom: false },
+  { hostRe: /(^|\.)(kimi\.com|kimi\.moonshot\.cn)$/, name: 'Kimi', file: 'scrapers/kimi-scraper.js', hasTime: true, dom: false },
+  { hostRe: /(^|\.)chatglm\.cn$/, name: '智谱清言', file: 'scrapers/zhipu-scraper.js', hasTime: true, dom: false },
+  { hostRe: /(^|\.)doubao\.com$/, name: '豆包', file: 'scrapers/doubao-scraper-dom.js', dom: true, hasTime: false },
 ];
 
 // 需要持久化的控件（id → 属性）

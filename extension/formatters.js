@@ -83,6 +83,10 @@
     if (s.includes('claude')) return `https://claude.ai/chat/${id}`;
     if (s.includes('gemini')) return `https://gemini.google.com/app/${id}`;
     if (s.includes('grok')) return `https://grok.com/c/${id}`;
+    if (s.includes('deepseek')) return `https://chat.deepseek.com/a/chat/s/${id}`;
+    if (s.includes('kimi')) return `https://www.kimi.com/chat/${id}`;
+    if (s.includes('chatglm') || s.includes('zhipu')) return `https://chatglm.cn/main/alltoolsdetail?conversationId=${id}`;
+    if (s.includes('doubao')) return `https://www.doubao.com/chat/${id}`;
     return '';
   }
 
@@ -91,6 +95,10 @@
     if (s.includes('claude')) return L.docTitle('Claude');
     if (s.includes('gemini')) return L.docTitle('Gemini');
     if (s.includes('grok')) return L.docTitle('Grok');
+    if (s.includes('deepseek')) return L.docTitle('DeepSeek');
+    if (s.includes('kimi')) return L.docTitle('Kimi');
+    if (s.includes('chatglm') || s.includes('zhipu')) return L.docTitle('智谱清言');
+    if (s.includes('doubao')) return L.docTitle('豆包');
     if (s.includes('chatgpt')) return L.docTitle('ChatGPT');
     return L.docTitle('');
   }
