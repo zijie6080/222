@@ -19,6 +19,8 @@ function platformInfo(source) {
   if (s.includes('kimi')) return { docTitle: 'Kimi 对话导出', baseName: 'kimi-export' };
   if (s.includes('chatglm') || s.includes('zhipu')) return { docTitle: '智谱清言 对话导出', baseName: 'zhipu-export' };
   if (s.includes('doubao')) return { docTitle: '豆包 对话导出', baseName: 'doubao-export' };
+  if (s.includes('yuanbao')) return { docTitle: '腾讯元宝 对话导出', baseName: 'yuanbao-export' };
+  if (s.includes('meta.ai') || s.includes('meta ai')) return { docTitle: 'Meta AI 对话导出', baseName: 'meta-export' };
   if (s.includes('chatgpt')) return { docTitle: 'ChatGPT 对话导出', baseName: 'chatgpt-export' };
   return { docTitle: '聊天记录导出', baseName: 'chat-export' };
 }

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI 聊天记录导出",
-  "version": "1.4.0",
-  "description": "一键抓取 ChatGPT / Claude / Gemini / Grok / DeepSeek / Kimi / 智谱清言 / 豆包 的聊天记录，多语言界面（中/英/日），支持筛选、导出 JSON/Markdown/TXT/HTML/PDF 及对话内文件下载",
+  "version": "1.5.0",
+  "description": "一键抓取 ChatGPT / Claude / Gemini / Grok / DeepSeek / Kimi / 智谱清言 / 豆包 / 腾讯元宝 / Meta AI 的聊天记录，多语言界面（中/英/日），支持筛选、导出 JSON/Markdown/TXT/HTML/PDF 及对话内文件下载",
   "permissions": [
     "activeTab",
     "scripting",
@@ -18,7 +18,10 @@
     "https://www.kimi.com/*",
     "https://kimi.moonshot.cn/*",
     "https://chatglm.cn/*",
-    "https://www.doubao.com/*"
+    "https://www.doubao.com/*",
+    "https://yuanbao.tencent.com/*",
+    "https://www.meta.ai/*",
+    "https://meta.ai/*"
   ],
   "action": {
     "default_popup": "popup.html",

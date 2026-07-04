@@ -87,6 +87,8 @@
     if (s.includes('kimi')) return `https://www.kimi.com/chat/${id}`;
     if (s.includes('chatglm') || s.includes('zhipu')) return `https://chatglm.cn/main/alltoolsdetail?conversationId=${id}`;
     if (s.includes('doubao')) return `https://www.doubao.com/chat/${id}`;
+    if (s.includes('yuanbao')) return `https://yuanbao.tencent.com/chat/${id}`;
+    if (s.includes('meta.ai') || s.includes('meta ai')) return `https://www.meta.ai/prompt/${id}`;
     return '';
   }
 
@@ -99,6 +101,8 @@
     if (s.includes('kimi')) return L.docTitle('Kimi');
     if (s.includes('chatglm') || s.includes('zhipu')) return L.docTitle('智谱清言');
     if (s.includes('doubao')) return L.docTitle('豆包');
+    if (s.includes('yuanbao')) return L.docTitle('腾讯元宝');
+    if (s.includes('meta.ai') || s.includes('meta ai')) return L.docTitle('Meta AI');
     if (s.includes('chatgpt')) return L.docTitle('ChatGPT');
     return L.docTitle('');
   }

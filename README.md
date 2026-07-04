@@ -20,16 +20,18 @@
 | Kimi（kimi.com / kimi.moonshot.cn） | `scraper/kimi-scraper.js` | 页面内调后端接口 | ✅ | ✅ |
 | 智谱清言（chatglm.cn） | `scraper/zhipu-scraper.js` | 页面内调后端接口 | ✅ | ✅ |
 | 豆包（doubao.com） | `scraper/doubao-scraper-dom.js` | DOM 抓取³ | ❌ | ⚠️ 纯文本 |
+| 腾讯元宝（yuanbao.tencent.com） | `scraper/yuanbao-scraper.js` | 页面内调后端接口 | ✅ | ✅ |
+| Meta AI（meta.ai） | `scraper/meta-scraper-dom.js` | DOM 抓取³ | ❌ | ⚠️ 纯文本 |
 
 ¹ Gemini 网页端内部走 batchexecute 私有协议，没有干净的 REST 接口，故用 DOM 方式（自动滚动侧边栏和消息区加载全部内容）。
 ² 指 grok.com 独立站；X（推特）内嵌的 Grok 是另一套接口，暂不支持。
-³ 豆包 Web 端无干净 REST 接口，故用 DOM 方式（自动滚动侧边栏和消息区）。
+³ 豆包 / Meta AI Web 端无干净 REST 接口（Meta 走带反爬令牌的 GraphQL），故用 DOM 方式（自动滚动侧边栏和消息区）。
 
-> **国产平台（DeepSeek / Kimi / 智谱清言 / 豆包）说明**：这些平台的接口未公开，脚本按其
+> **较新平台（DeepSeek / Kimi / 智谱清言 / 豆包 / 腾讯元宝 / Meta AI）说明**：这些平台的接口未公开，脚本按其
 > Web 结构编写并对字段做了多候选兜底，但作者无法在开发环境用真实账号验证。**首次使用请先把
 > 脚本顶部 `CONFIG.maxConversations` 或插件的「最多抓取对话数」设为 3 试跑**，确认无误再抓全部；
 > 若某平台报错，把控制台/弹窗里的红字发回即可修正。DeepSeek/Kimi 需已登录（脚本从 localStorage
-> 取登录令牌），智谱走 cookie 登录态。
+> 取登录令牌），智谱/腾讯元宝走 cookie 登录态；Meta AI 用 DOM 抓取（需登录并展开对话历史）。
 
 ```
 ├── scraper/
@@ -41,7 +43,9 @@
 │   ├── deepseek-scraper.js      # DeepSeek（API 版）
 │   ├── kimi-scraper.js          # Kimi（API 版）
 │   ├── zhipu-scraper.js         # 智谱清言（API 版）
-│   └── doubao-scraper-dom.js    # 豆包（DOM 版）
+│   ├── doubao-scraper-dom.js    # 豆包（DOM 版）
+│   ├── yuanbao-scraper.js       # 腾讯元宝（API 版）
+│   └── meta-scraper-dom.js      # Meta AI（DOM 版）
 ├── extension/                   # Chrome 插件（MV3），一键抓取，免开控制台
 │   ├── manifest.json
 │   ├── popup.html / popup.js    # 弹窗：识别平台、筛选/格式/文件设置、进度
