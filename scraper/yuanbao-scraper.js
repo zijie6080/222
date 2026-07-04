@@ -110,38 +110,80 @@
     const d = Number.isFinite(n) && String(v).length >= 9 ? new Date(n > 1e12 ? n : n * 1000) : new Date(v);
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
-  const pickArr = (o, ...keys) => {
-    for (const k of keys) {
-      const v = o && (o[k] || (o.data && o.data[k]) || (o.result && o.result[k]));
-      if (Array.isArray(v)) return v;
-    }
-    if (Array.isArray(o)) return o;
-    if (o && Array.isArray(o.data)) return o.data;
-    return [];
-  };
-
-  // ---- 1. 会话列表 ----
-  async function listConversations() {
-    const items = [];
-    let page = 1;
-    for (;;) {
-      let data;
-      const body = { agentId: CONFIG.agentId, page, pageSize: CONFIG.pageSize, count: CONFIG.pageSize };
-      try {
-        data = await apiPost('/api/user/agent/conversation/v1/list', body);
-      } catch (err) {
-        if (items.length) break;
-        data = await apiGet(`/api/user/agent/conversation/v1/list?agentId=${encodeURIComponent(CONFIG.agentId)}&page=${page}&pageSize=${CONFIG.pageSize}`);
+  // 从任意响应结构里稳健取出数组：先认已知容器/字段，取不到则深度扫描（抵御字段名猜错）
+  function deepArrays(o, d, out) {
+    if (!o || typeof o !== 'object' || d > 6) return out;
+    if (Array.isArray(o)) { out.push(o); for (const x of o) deepArrays(x, d + 1, out); return out; }
+    for (const k of Object.keys(o)) deepArrays(o[k], d + 1, out);
+    return out;
+  }
+  function pickArrayBy(data, isMatch) {
+    return deepArrays(data, 0, []).reduce((best, a) => {
+      const m = a.filter(isMatch).length;
+      return (m >= Math.max(1, a.length * 0.5) && a.length > best.length) ? a : best;
+    }, []);
+  }
+  const isConvEl = (el) => el && typeof el === 'object' && (
+    ['uuid', 'convId', 'conversation_id', 'conversationId', 'chat_id', 'chatId', 'session_id', 'chat_session_id'].some((k) => k in el) ||
+    ('id' in el && ['title', 'name', 'firstQuestion', 'conversation_title', 'updated_at', 'update_time', 'inserted_at', 'created_at'].some((k) => k in el))
+  );
+  const isMsgEl = (el) => el && typeof el === 'object' &&
+    ['role', 'sender', 'speaker', 'query', 'answer', 'response', 'speechText'].some((k) => k in el);
+  function pickConvArray(data) {
+    for (const c of [data, data && data.data, data && data.result, data && data.biz_data]) {
+      if (!c || typeof c !== 'object') continue;
+      for (const k of ['chat_sessions', 'conversations', 'conversation_list', 'convs', 'chats', 'sessions', 'conversationList', 'list', 'items']) {
+        if (Array.isArray(c[k]) && c[k].length) return c[k];
       }
-      const arr = pickArr(data, 'conversations', 'convs', 'list', 'items', 'conversationList');
-      if (!arr.length) break;
-      items.push(...arr);
-      log(`已获取会话列表 ${items.length}`);
-      if (arr.length < CONFIG.pageSize) break;
-      page++;
+    }
+    return pickArrayBy(data, isConvEl);
+  }
+  function pickMsgArray(data) {
+    for (const c of [data, data && data.data, data && data.result, data && data.biz_data]) {
+      if (!c || typeof c !== 'object') continue;
+      for (const k of ['chat_messages', 'messages', 'history', 'convs', 'speeches', 'dialog', 'segments', 'chatList', 'chat_list', 'conversation_history', 'list', 'items']) {
+        if (Array.isArray(c[k]) && c[k].length) return c[k];
+      }
+    }
+    return pickArrayBy(data, isMsgEl);
+  }
+
+  // 稳健分页：按 id 去重，本页新增为 0 / 空 / 超上限即停（抵御游标被忽略、单页数不稳定、提前截断）
+  async function collectPaged(fetchPage, idOf, label) {
+    const seen = new Map();
+    for (let page = 0; page < 300; page++) {
+      const collected = [...seen.values()];
+      let arr;
+      try {
+        arr = await fetchPage(page, collected);
+      } catch (err) {
+        if (seen.size) { warn(`${label}第 ${page + 1} 页失败，已收 ${seen.size} 条：${err && err.message}`); break; }
+        throw err;
+      }
+      arr = arr || [];
+      let added = 0;
+      for (const it of arr) { const id = idOf(it); if (id != null && id !== '' && !seen.has(id)) { seen.set(id, it); added++; } }
+      log(`已获取${label} ${seen.size}（本页 ${arr.length}，新增 ${added}）`);
+      if (arr.length === 0 || added === 0) break;
       await sleep(CONFIG.requestDelayMs);
     }
-    return items;
+    return [...seen.values()];
+  }
+
+  // ---- 1. 会话列表（先不带 agentId 拿全量，失败/为空再回退默认智能体，避免漏其它智能体的对话）----
+  async function listConversations() {
+    return collectPaged(async (page, collected) => {
+      const body = { page: page + 1, pageSize: CONFIG.pageSize, count: CONFIG.pageSize };
+      try {
+        const arr = pickConvArray(await apiPost('/api/user/agent/conversation/v1/list', body));
+        if (arr.length || !CONFIG.agentId) return arr;
+      } catch (_) {}
+      try {
+        const arr = pickConvArray(await apiPost('/api/user/agent/conversation/v1/list', { ...body, agentId: CONFIG.agentId }));
+        if (arr.length) return arr;
+      } catch (_) {}
+      return pickConvArray(await apiGet(`/api/user/agent/conversation/v1/list?agentId=${encodeURIComponent(CONFIG.agentId)}&page=${page + 1}&pageSize=${CONFIG.pageSize}`));
+    }, (it) => String(it.id || it.convId || it.conversationId), '会话列表');
   }
 
   // ---- 2. 会话消息 ----
@@ -217,7 +259,7 @@
       } catch (err) {
         data = await apiGet(`/api/user/agent/conversation/v1/detail?convId=${encodeURIComponent(id)}&agentId=${encodeURIComponent(CONFIG.agentId)}`);
       }
-      const raw = pickArr(data, 'convs', 'messages', 'list', 'chatList', 'speeches', 'dialog');
+      const raw = pickMsgArray(data);
       convAssets = CONFIG.downloadAssets ? [] : null;
       const messages = raw.map(toMessage).filter(Boolean);
       conversations.push({

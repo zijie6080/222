@@ -136,35 +136,82 @@
     const d = Number.isFinite(n) && String(v).length >= 9 ? new Date(n > 1e12 ? n : n * 1000) : new Date(v);
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
-  const pickList = (o) => (o && o.biz_data && (o.biz_data.chat_sessions || o.biz_data.chat_session || o.biz_data.items)) || (o && o.data && (o.data.chat_sessions || o.data.items)) || [];
+  // 从任意响应结构里稳健取出数组：先认已知容器/字段，取不到则深度扫描（抵御字段名猜错）
+  function deepArrays(o, d, out) {
+    if (!o || typeof o !== 'object' || d > 6) return out;
+    if (Array.isArray(o)) { out.push(o); for (const x of o) deepArrays(x, d + 1, out); return out; }
+    for (const k of Object.keys(o)) deepArrays(o[k], d + 1, out);
+    return out;
+  }
+  function pickArrayBy(data, isMatch) {
+    return deepArrays(data, 0, []).reduce((best, a) => {
+      const m = a.filter(isMatch).length;
+      return (m >= Math.max(1, a.length * 0.5) && a.length > best.length) ? a : best;
+    }, []);
+  }
+  const isConvEl = (el) => el && typeof el === 'object' && (
+    ['uuid', 'convId', 'conversation_id', 'conversationId', 'chat_id', 'chatId', 'session_id', 'chat_session_id'].some((k) => k in el) ||
+    ('id' in el && ['title', 'name', 'firstQuestion', 'conversation_title', 'updated_at', 'update_time', 'inserted_at', 'created_at'].some((k) => k in el))
+  );
+  const isMsgEl = (el) => el && typeof el === 'object' &&
+    ['role', 'sender', 'speaker', 'query', 'answer', 'response', 'speechText'].some((k) => k in el);
+  function pickConvArray(data) {
+    for (const c of [data, data && data.data, data && data.result, data && data.biz_data]) {
+      if (!c || typeof c !== 'object') continue;
+      for (const k of ['chat_sessions', 'conversations', 'conversation_list', 'convs', 'chats', 'sessions', 'conversationList', 'list', 'items']) {
+        if (Array.isArray(c[k]) && c[k].length) return c[k];
+      }
+    }
+    return pickArrayBy(data, isConvEl);
+  }
+  function pickMsgArray(data) {
+    for (const c of [data, data && data.data, data && data.result, data && data.biz_data]) {
+      if (!c || typeof c !== 'object') continue;
+      for (const k of ['chat_messages', 'messages', 'history', 'convs', 'speeches', 'dialog', 'segments', 'chatList', 'chat_list', 'conversation_history', 'list', 'items']) {
+        if (Array.isArray(c[k]) && c[k].length) return c[k];
+      }
+    }
+    return pickArrayBy(data, isMsgEl);
+  }
+
+  // 稳健分页：按 id 去重，本页新增为 0 / 空 / 超上限即停（抵御游标被忽略、单页数不稳定、提前截断）
+  async function collectPaged(fetchPage, idOf, label) {
+    const seen = new Map();
+    for (let page = 0; page < 300; page++) {
+      const collected = [...seen.values()];
+      let arr;
+      try {
+        arr = await fetchPage(page, collected);
+      } catch (err) {
+        if (seen.size) { warn(`${label}第 ${page + 1} 页失败，已收 ${seen.size} 条：${err && err.message}`); break; }
+        throw err;
+      }
+      arr = arr || [];
+      let added = 0;
+      for (const it of arr) { const id = idOf(it); if (id != null && id !== '' && !seen.has(id)) { seen.set(id, it); added++; } }
+      log(`已获取${label} ${seen.size}（本页 ${arr.length}，新增 ${added}）`);
+      if (arr.length === 0 || added === 0) break;
+      await sleep(CONFIG.requestDelayMs);
+    }
+    return [...seen.values()];
+  }
 
   // ---- 1. 分页拉取会话列表 ----
   async function listConversations() {
-    const items = [];
-    // 优先尝试分页接口；不认分页就退回一次性
-    let before = null;
-    for (;;) {
+    return collectPaged(async (page, collected) => {
+      const last = collected[collected.length - 1];
+      const before = last && (last.updated_at || last.inserted_at || last.seq_id || last.id);
       const body = { count: CONFIG.pageSize };
       if (before) body.before = before;
       let data;
       try {
         data = await apiPost('/api/v0/chat_session/fetch_page', body);
       } catch (err) {
-        if (items.length) break;
-        // 退回 GET 版
+        if (collected.length) throw err;
         data = await apiGet(`/api/v0/chat_session/fetch_page?count=${CONFIG.pageSize}`);
       }
-      const page = pickList(data);
-      if (!page.length) break;
-      items.push(...page);
-      log(`已获取会话列表 ${items.length}`);
-      const last = page[page.length - 1];
-      const next = last && (last.updated_at || last.inserted_at || last.seq_id);
-      if (!next || page.length < CONFIG.pageSize || next === before) break;
-      before = next;
-      await sleep(CONFIG.requestDelayMs);
-    }
-    return items;
+      return pickConvArray(data);
+    }, (it) => String(it.id || it.chat_session_id || it.session_id), '会话列表');
   }
 
   // ---- 2. 消息抽取 ----
@@ -246,7 +293,7 @@
       } catch (err) {
         data = await apiPost('/api/v0/chat/history_messages', { chat_session_id: id });
       }
-      const raw = (data && data.biz_data && (data.biz_data.chat_messages || data.biz_data.messages)) || (data && data.data && data.data.chat_messages) || [];
+      const raw = pickMsgArray(data);
       convAssets = CONFIG.downloadAssets ? [] : null;
       const messages = raw.flatMap(toMessage).filter(Boolean);
       conversations.push({

@@ -76,7 +76,7 @@
   }
 
   // 侧边栏对话项 / 消息 选择器（多候选兜底）
-  const convItemSelector = 'a[href*="/chat/"], [data-testid="conversation_item"], [class*="conversation-item"], [class*="history-item"]';
+  const convItemSelector = 'a[href*="/chat/"], a[href*="/thread/"], [data-testid="conversation_item"], [class*="conversation-item"], [class*="history-item"], [class*="chat-item"], [class*="session-item"]';
   const messageSelector = '[data-testid="message"], [data-testid="receive_message"], [data-testid="send_message"], [class*="message-block"], [class*="message-item"]';
 
   function findScrollable(el) {
