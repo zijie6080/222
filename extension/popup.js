@@ -46,9 +46,7 @@ let progress = { cur: 0, total: 0 };
 let currentLang = 'zh';
 
 function detectLang() {
-  const nav = String(navigator.language || '').toLowerCase();
-  if (nav.startsWith('zh')) return 'zh';
-  if (nav.startsWith('ja')) return 'ja';
+  // 默认英文（初始界面语言）；用户在弹窗里切换后由 chrome.storage 记住其选择
   return 'en';
 }
 

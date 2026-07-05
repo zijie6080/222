@@ -18,11 +18,11 @@
 ## 二、商店 listing 文案
 
 **名称 / Name（≤45 字符）**
-`AI 聊天记录导出 | AI Chat Exporter`
+`AI Chat Exporter | AI 聊天记录导出`
 
 **简短描述 / Summary（≤132 字符）**
-中文：`一键导出 ChatGPT、Claude、Gemini、Grok、DeepSeek、Kimi 等 10 个平台的聊天记录为 PDF/Markdown/HTML/JSON/TXT。纯本地，数据不外传。`
-English：`Export your ChatGPT, Claude, Gemini, Grok, DeepSeek, Kimi & more chats to PDF/Markdown/HTML/JSON/TXT. 100% local, no data leaves your device.`
+English (primary)：`Export your ChatGPT, Claude, Gemini, Grok, DeepSeek, Kimi & more chats to PDF/Markdown/HTML/JSON/TXT. 100% local, no data leaves your device.`
+中文（辅）：`一键导出 ChatGPT、Claude、Gemini、Grok、DeepSeek、Kimi 等 10 个平台的聊天记录为 PDF/Markdown/HTML/JSON/TXT。纯本地，数据不外传。`
 
 **类别 / Category：** Productivity（生产力工具）
 
