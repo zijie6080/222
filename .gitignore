@@ -3,3 +3,4 @@ out/
 conversations.json
 *.log
 .DS_Store
+dist/

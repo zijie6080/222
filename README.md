@@ -248,6 +248,24 @@ DOM 版（Gemini、ChatGPT 备用）抓的数据没有时间戳，时间筛选�
 - **插件点了没反应**：先刷新目标网页再点插件图标；确认地址栏域名是支持的四个之一（X 内嵌的 Grok 不支持）；
 - **改了 scraper/ 里的脚本但插件行为没变**：运行 `npm run sync:extension` 同步到 `extension/scrapers/`。
 
+## 发布到 Chrome 应用商店
+
+扩展已备好上架所需材料：图标（`extension/icons/`）、隐私政策（`PRIVACY.md`）、
+上架文案与逐步操作指引（`STORE_LISTING.md`）。
+
+1. 打包：`npm run package:extension` → 生成 `dist/ai-chat-exporter-v<版本>.zip`（会先自动
+   同步 scraper）。
+2. 把 `PRIVACY.md` 托管成一个公开 URL（GitHub raw 链接或 GitHub Pages 均可）。
+3. 到 <https://chrome.google.com/webstore/devconsole> 注册开发者号（一次性 $5），
+   新建项目上传 zip，按 `STORE_LISTING.md` 填名称/描述/权限理由/隐私政策链接，提交审核。
+
+注意：本扩展涉及 10 个 AI 站点的 host 权限并读取页面聊天内容，会触发**人工审核**
+（通常数天、偶尔可达两周）；`STORE_LISTING.md` 里已按审核要求逐条写好权限用途与单一用途声明。
+若只想自用或小范围分发，可在「可见性」选「未列出/私享」，或直接把 `dist/` 里的 zip 让别人
+用「加载已解压的扩展程序」安装，无需上架。
+
+---
+
 ## 免责声明
 
 仅用于导出**你自己账号**的聊天记录做个人备份。请遵守各平台（OpenAI / Anthropic / Google / xAI）的服务条款，不要用于批量爬取他人数据。
