@@ -28,7 +28,7 @@ const mPath = path.join(build, 'manifest.json');
 const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
 m.name = 'AI 聊天记录导出';
 m.action.default_title = 'AI 聊天记录导出';
-m.description = '一键导出 ChatGPT、Claude、Gemini、Grok、DeepSeek、Kimi 等 AI 的聊天记录为 PDF、Markdown、HTML、JSON、TXT。纯本地，数据不外传。';
+m.description = '一键把 AI 聊天记录导出为 PDF、Markdown、HTML、JSON、TXT，可筛选、预览，全程本地处理，数据不外传。';
 if ([...m.description].length > 132) throw new Error('中文描述超 132 字符：' + [...m.description].length);
 fs.writeFileSync(mPath, JSON.stringify(m, null, 2) + '\n');
 

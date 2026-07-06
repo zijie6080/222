@@ -20,32 +20,34 @@
 **名称 / Name（≤45 字符）**
 `AI Chat Exporter | AI 聊天记录导出`
 
-**简短描述 / Summary（≤132 字符）**
-English (primary)：`Export your ChatGPT, Claude, Gemini, Grok, DeepSeek, Kimi & more chats to PDF/Markdown/HTML/JSON/TXT. 100% local, no data leaves your device.`
-中文（辅）：`一键导出 ChatGPT、Claude、Gemini、Grok、DeepSeek、Kimi 等 10 个平台的聊天记录为 PDF/Markdown/HTML/JSON/TXT。纯本地，数据不外传。`
+**简短描述 / Summary（≤132 字符，不要堆砌品牌名）**
+English (primary)：`Export your AI chat history to PDF, Markdown, HTML, JSON or TXT. Filter, preview and save. 100% local, nothing leaves your device.`
+中文（辅）：`一键把 AI 聊天记录导出为 PDF、Markdown、HTML、JSON、TXT，可筛选、预览，全程本地处理，数据不外传。`
 
 **类别 / Category：** Productivity（生产力工具）
 
-**详细描述 / Detailed description（中英示例，可直接粘贴）**
+**详细描述 / Detailed description（英文版，直接粘贴。已去掉品牌名清单以免再被判关键词堆砌）**
 
 ```
-把你在主流 AI 助手里的聊天记录一键导出、长期留存。
+Back up and archive your AI chat history in one click.
 
-支持平台（10 个）：ChatGPT、Claude、Gemini、Grok、DeepSeek、Kimi、智谱清言、豆包、腾讯元宝、Meta AI。
+Export formats: HTML (best for reading), Markdown (great for notes apps), PDF (print or archive), JSON (backup or processing) and TXT.
 
-功能：
-• 5 种导出格式：HTML（推荐浏览）、Markdown（Obsidian/笔记）、PDF（打印/存档）、JSON（程序处理/备份）、TXT
-• 按时间范围（今天/近7天/近30天/自定义）、标题关键词筛选，或逐个勾选要导出的对话
-• 可选导出消息时间戳、思考过程、系统消息、原对话链接
-• 可下载对话中的图片与附件
-• 界面支持 中文 / English / 日本語
-• 导出前显示预计数量，导出中显示进度，导出后可一键打开下载目录
+Features:
+- Filter by date range (today, last 7 or 30 days, or a custom range), filter by title keyword, or pick specific conversations
+- Optionally include message timestamps, the assistant's reasoning, system messages and a link back to the original chat
+- Download images and files that appear in your conversations
+- Interface available in English, Chinese and Japanese
+- See an estimate before you export, watch live progress while it runs, and open the download folder when it finishes
 
-隐私：全部处理都在你的浏览器本地完成，只读取你自己账号的聊天记录并保存到你的电脑，
-不上传、不收集、不经过任何第三方服务器。
+Privacy first: everything runs locally in your browser. The extension only reads your own chat history and saves it to your computer. Nothing is uploaded, collected, or sent to any third-party server.
 
-要生成带目录页码、代码高亮的高质量 PDF，可配合项目提供的本地命令行工具。
+It works with the popular AI chat assistants you already use.
 ```
+
+> 提示：审核方明确说「产品说明中有过多关键字」，所以上面**不再逐一列出各家 AI 的名字**。
+> 如果你想让用户知道支持哪些平台，最多在一句话里自然提到一两个（如 "such as ChatGPT"），
+> **不要再列一长串品牌名**，否则会再次被判垃圾内容。
 
 ---
 

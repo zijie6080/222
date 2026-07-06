@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Chat Exporter",
-  "version": "1.5.3",
-  "description": "Export your ChatGPT, Claude, Gemini, Grok, DeepSeek, Kimi & more AI chats to PDF/Markdown/HTML/JSON/TXT. 100% local.",
+  "version": "1.5.4",
+  "description": "Export your AI chat history to PDF, Markdown, HTML, JSON or TXT. Filter, preview and save. 100% local, nothing leaves your device.",
   "permissions": [
     "activeTab",
     "scripting",
