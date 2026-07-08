@@ -2,7 +2,7 @@
 // popup.js 通过 t(key, params) 取值，{x} 为插值占位符；缺失键回退中文。
 globalThis.AI_EXPORT_I18N = {
   zh: {
-    'app.title': 'AI 聊天记录导出',
+    'app.title': 'ChatArk',
     'app.detecting': '检测当前页面…',
     'app.noPlatform': '未识别到支持的平台',
     'unsupported.title': '当前页面不支持',
@@ -108,7 +108,7 @@ globalThis.AI_EXPORT_I18N = {
     'untitled': '(无标题)',
   },
   en: {
-    'app.title': 'AI Chat Exporter',
+    'app.title': 'ChatArk',
     'app.detecting': 'Detecting current page…',
     'app.noPlatform': 'Unsupported page',
     'unsupported.title': 'This page is not supported',
@@ -214,7 +214,7 @@ globalThis.AI_EXPORT_I18N = {
     'untitled': '(untitled)',
   },
   ja: {
-    'app.title': 'AI チャットエクスポート',
+    'app.title': 'ChatArk',
     'app.detecting': 'ページを検出中…',
     'app.noPlatform': '対応サイトではありません',
     'unsupported.title': 'このページは対応していません',

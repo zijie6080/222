@@ -1,4 +1,4 @@
-# AI 聊天记录导出工具（ChatGPT / Claude / Gemini / Grok）
+# ChatArk —— AI 聊天记录导出工具（ChatGPT / Claude / Gemini / Grok 等）
 
 把你在 **ChatGPT、Claude、Gemini、Grok** 的对话抓取下来，导出为 **PDF / TXT / Markdown / HTML**。
 
@@ -253,7 +253,7 @@ DOM 版（Gemini、ChatGPT 备用）抓的数据没有时间戳，时间筛选�
 扩展已备好上架所需材料：图标（`extension/icons/`）、隐私政策（`PRIVACY.md`）、
 上架文案与逐步操作指引（`STORE_LISTING.md`）。
 
-1. 打包：`npm run package:extension` → 生成 `dist/ai-chat-exporter-v<版本>.zip`（会先自动
+1. 打包：`npm run package:extension` → 生成 `dist/chatark-v<版本>.zip`（会先自动
    同步 scraper）。
 2. 把 `PRIVACY.md` 托管成一个公开 URL（GitHub raw 链接或 GitHub Pages 均可）。
 3. 到 <https://chrome.google.com/webstore/devconsole> 注册开发者号（一次性 $5），

@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "ChatArk",
+    "description": "Extension name shown in the browser and store."
+  },
+  "extDesc": {
+    "message": "Export your AI chat history to PDF, Markdown, HTML, JSON or TXT. Filter, preview and save. 100% local, nothing leaves your device."
+  }
+}

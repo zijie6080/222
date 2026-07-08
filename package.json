@@ -1,5 +1,5 @@
 {
-  "name": "chatgpt-export",
+  "name": "chatark",
   "version": "1.0.0",
   "description": "AI 聊天记录导出工具（ChatGPT/Claude/Gemini/Grok）：浏览器控制台抓取 + 本地多格式导出（PDF/TXT/Markdown/HTML）",
   "type": "module",

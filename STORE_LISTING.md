@@ -7,7 +7,7 @@
 
 ## 一、上架前检查清单
 
-- [ ] `npm run package:extension` 能生成 `dist/ai-chat-exporter-vX.Y.Z.zip`
+- [ ] `npm run package:extension` 能生成 `dist/chatark-vX.Y.Z.zip`
 - [ ] 至少在 ChatGPT / Claude 上实测导出可用（避免因「功能不可用」被拒）
 - [ ] 隐私政策 `PRIVACY.md` 已托管为**公开可访问的 URL**（见第五节）
 - [ ] 准备好 1–5 张 1280×800 或 640×400 的商店截图（见第四节）
@@ -18,13 +18,22 @@
 ## 二、商店 listing 文案
 
 **名称 / Name（≤45 字符）**
-`AI Chat Exporter | AI 聊天记录导出`
+`ChatArk`
 
-**简短描述 / Summary（≤132 字符，不要堆砌品牌名）**
-English (primary)：`Export your AI chat history to PDF, Markdown, HTML, JSON or TXT. Filter, preview and save. 100% local, nothing leaves your device.`
-中文（辅）：`一键把 AI 聊天记录导出为 PDF、Markdown、HTML、JSON、TXT，可筛选、预览，全程本地处理，数据不外传。`
+> 品牌名 `ChatArk` 三种语言都一样（品牌名不翻译）。扩展包内已用 `_locales`（`default_locale: en`）
+> 让**名称与简短描述随浏览器/系统语言自动本地化**——中文浏览器显示中文描述、日文显示日文、其余英文，
+> 无需再打「中文变体包」。以下简短描述已内置于 `extension/_locales/{en,zh_CN,ja}/messages.json`。
+
+**简短描述 / Summary（≤132 字符，不要堆砌品牌名；三语已内置于 _locales，Chrome 自动按语言取用）**
+English：`Export your AI chat history to PDF, Markdown, HTML, JSON or TXT. Filter, preview and save. 100% local, nothing leaves your device.`
+中文：`一键把 AI 聊天记录导出为 PDF、Markdown、HTML、JSON、TXT，可筛选、预览，全程本地处理，数据不外传。`
+日本語：`AI のチャット履歴を PDF・Markdown・HTML・JSON・TXT にワンクリックで書き出し。絞り込み・プレビュー対応、すべてローカル処理でデータは外部に送信されません。`
 
 **类别 / Category：** Productivity（生产力工具）
+
+> 关于本地化：扩展**名称与简短描述**已由 `_locales` 自动随浏览器语言切换（见上）。但商店 listing
+> 页面的**长图文「详细描述」**属于 Chrome 开发者后台的内容，需你在后台「本地化 / Localization」里
+> **按语言分别粘贴**（英/中/日各一份），这是平台机制，代码无法代办。下面先给英文版；中/日可按需翻译。
 
 **详细描述 / Detailed description（英文版，直接粘贴。已去掉品牌名清单以免再被判关键词堆砌）**
 
@@ -95,7 +104,7 @@ It works with the popular AI chat assistants you already use.
 ## 六、提交步骤（在开发者后台，需你本人操作）
 
 1. 打开 <https://chrome.google.com/webstore/devconsole>，登录并支付一次性 **$5** 注册费。
-2. 本地运行 `npm run package:extension`，得到 `dist/ai-chat-exporter-vX.Y.Z.zip`。
+2. 本地运行 `npm run package:extension`，得到 `dist/chatark-vX.Y.Z.zip`。
 3. 后台「新增项目 / New item」→ 上传该 zip。
 4. 填写第二节的名称/描述、选类别 Productivity、上传第四节截图（图标会自动取自包内 128px）。
 5. 「隐私实践 / Privacy practices」标签：粘贴第三节的权限理由与单一用途声明，

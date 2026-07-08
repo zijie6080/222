@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "ChatArk",
+    "description": "浏览器与商店中显示的扩展名称。"
+  },
+  "extDesc": {
+    "message": "一键把 AI 聊天记录导出为 PDF、Markdown、HTML、JSON、TXT，可筛选、预览，全程本地处理，数据不外传。"
+  }
+}

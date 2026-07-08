@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "ChatArk",
+    "description": "ブラウザとストアに表示される拡張機能名。"
+  },
+  "extDesc": {
+    "message": "AI のチャット履歴を PDF・Markdown・HTML・JSON・TXT にワンクリックで書き出し。絞り込み・プレビュー対応、すべてローカル処理でデータは外部に送信されません。"
+  }
+}

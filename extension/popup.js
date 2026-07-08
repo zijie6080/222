@@ -46,7 +46,11 @@ let progress = { cur: 0, total: 0 };
 let currentLang = 'zh';
 
 function detectLang() {
-  // 默认英文（初始界面语言）；用户在弹窗里切换后由 chrome.storage 记住其选择
+  // 跟随浏览器语言：zh→中文，ja→日文，其余→英文；
+  // 用户在弹窗里手动切换后由 chrome.storage 记住其选择并优先覆盖。
+  const l = (navigator.language || (navigator.languages && navigator.languages[0]) || 'en').toLowerCase();
+  if (l.startsWith('zh')) return 'zh';
+  if (l.startsWith('ja')) return 'ja';
   return 'en';
 }
 

@@ -1,7 +1,7 @@
 # 隐私政策 / Privacy Policy
 
-**扩展名称 / Extension:** AI 聊天记录导出（AI Chat Exporter）
-**最后更新 / Last updated:** 2025-07
+**扩展名称 / Extension:** ChatArk
+**最后更新 / Last updated:** 2026-07
 
 ---
 
